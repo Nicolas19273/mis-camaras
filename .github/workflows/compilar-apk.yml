@@ -59,7 +59,7 @@ jobs:
           cp -r lib test app/
           cd app
           flutter pub add media_kit media_kit_video media_kit_libs_video \
-            shared_preferences flutter_secure_storage http open_filex crypto background_downloader gal
+            shared_preferences flutter_secure_storage http open_filex crypto background_downloader "gal:^2.3.0"
 
           # Permisos: internet, instalar actualizaciones, notificaciones y búsqueda en el WiFi.
           MANIFEST=android/app/src/main/AndroidManifest.xml
