@@ -8,8 +8,10 @@ import '../services/app_store.dart';
 import '../services/device_api.dart';
 import '../services/device_clock.dart';
 import '../services/network_config.dart';
+import '../services/nvr_channels.dart';
 import '../theme.dart';
 import '../widgets/brand_badge.dart';
+import 'nvr_repair_screen.dart';
 import 'recording_screen.dart';
 
 enum _Level { running, ok, warn, bad, info }
@@ -40,6 +42,7 @@ class _DeviceCheck {
   final time = _Item('Hora');
   final rec = _Item('Grabación');
   final disk = _Item('Disco');
+  final nvrCams = _Item('Cámaras del NVR');
 
   bool get supportsRecording => RecordingApi.supports(device);
 
@@ -49,6 +52,7 @@ class _DeviceCheck {
         if (DeviceClock.supports(device)) time,
         if (supportsRecording) rec,
         if (supportsRecording) disk,
+        if (NvrChannels.supports(device)) nvrCams,
       ];
 }
 
@@ -139,6 +143,56 @@ class _HealthScreenState extends State<HealthScreen> {
 
     // 4 y 5. Grabación y disco.
     if (c.supportsRecording) await _checkRecording(c);
+
+    // 6. En NVR: ¿cada cámara responde en la IP que tiene guardada el NVR?
+    if (NvrChannels.supports(d)) await _checkNvrCameras(c);
+  }
+
+  Future<void> _checkNvrCameras(_DeviceCheck c) async {
+    final d = c.device;
+    final api = NvrChannels(d);
+    try {
+      final list = await api.list();
+      final missing = <NvrChannel>[];
+      await Future.wait(list.map((ch) async {
+        final ok = await NetworkConfig.hostResponds(ch.address, [if (ch.port != null) ch.port!, 80, 554],
+            timeout: const Duration(milliseconds: 1200));
+        if (!ok) missing.add(ch);
+      }));
+      missing.sort((a, b) => a.channel.compareTo(b.channel));
+      String name(NvrChannel ch) {
+        final t = d.channelNames[ch.channel]?.trim() ?? '';
+        return '${t.isEmpty ? 'Cámara ${ch.channel}' : t} (${ch.address})';
+      }
+
+      if (list.isEmpty) {
+        c.nvrCams.put(_Level.info, 'El NVR no informó sus cámaras');
+      } else if (missing.isEmpty) {
+        c.nvrCams.put(
+          _Level.ok,
+          'Las ${list.length} cámaras responden en su IP. Si el monitor muestra "Falló búsqueda de host", '
+          'usa Reparar desde esa cámara.',
+        );
+      } else {
+        c.nvrCams.put(
+          _Level.bad,
+          'El NVR no las encuentra (probablemente cambiaron de IP): ${missing.map(name).join(', ')}',
+          fixLabel: 'Reparar',
+          fix: () async {
+            await Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => NvrRepairScreen(store: widget.store, nvr: d, channel: missing.first.channel),
+            ));
+          },
+        );
+      }
+    } on NvrChannelException catch (e) {
+      c.nvrCams.put(_Level.warn, e.message);
+    } catch (_) {
+      c.nvrCams.put(_Level.info, 'No se pudo revisar');
+    } finally {
+      api.close();
+    }
+    _refresh();
   }
 
   Future<void> _checkTime(_DeviceCheck c) async {

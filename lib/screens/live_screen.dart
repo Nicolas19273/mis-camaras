@@ -8,6 +8,7 @@ import '../recording/recording_api.dart';
 import '../recording/recording_monitor.dart';
 import '../services/app_store.dart';
 import '../services/camera_status.dart';
+import '../services/nvr_channels.dart';
 import '../services/update_service.dart';
 import '../theme.dart';
 import '../widgets/brand_badge.dart';
@@ -22,6 +23,7 @@ import 'device_form_screen.dart';
 import 'discovery_screen.dart';
 import 'group_editor_screen.dart';
 import 'mosaic_screen.dart';
+import 'nvr_repair_screen.dart';
 import 'recording_screen.dart';
 
 /// Pestaña "En vivo": mosaico de cámaras al estilo NVR.
@@ -130,6 +132,25 @@ class _LiveScreenState extends State<LiveScreen> {
                 onTap: () {
                   Navigator.of(ctx).pop();
                   _pushPaused(RecordingScreen(store: widget.store, device: camera.device));
+                },
+              ),
+            if (widget.store.activeDevices.any(NvrChannels.supports))
+              ListTile(
+                leading: const Icon(Icons.build_circle_outlined),
+                title: const Text('Reparar conexión con el NVR'),
+                subtitle: const Text(
+                  'Si en el monitor del NVR esta cámara no se ve',
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  final nvr = camera.recordedBy;
+                  _pushPaused(NvrRepairScreen(
+                    store: widget.store,
+                    nvr: nvr?.device ?? (camera.device.isRecorder ? camera.device : null),
+                    channel: nvr?.channel ?? (camera.device.isRecorder ? camera.channel : null),
+                    camera: camera.device.isRecorder ? null : camera.device,
+                  ));
                 },
               ),
             ListTile(

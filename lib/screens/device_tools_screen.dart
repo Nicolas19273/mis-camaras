@@ -6,10 +6,12 @@ import '../services/app_store.dart';
 import '../services/device_api.dart';
 import '../services/discovery.dart';
 import '../services/network_config.dart';
+import '../services/nvr_channels.dart';
 import '../theme.dart';
 import '../widgets/brand_badge.dart';
 import 'channels_screen.dart';
 import 'network_screen.dart';
+import 'nvr_repair_screen.dart';
 import 'recording_screen.dart';
 
 /// Herramientas de un equipo: información, cámaras, IP, rescate y reinicio.
@@ -259,6 +261,17 @@ class _DeviceToolsScreenState extends State<DeviceToolsScreen> {
                   : null,
             ),
             const SectionLabel('Cámaras'),
+            if (NvrChannels.supports(device)) ...[
+              _ToolTile(
+                icon: Icons.build_circle_outlined,
+                title: 'Cámaras que el NVR no encuentra',
+                subtitle: 'Para el error "Falló búsqueda de host de red": IP cambiada, red o contraseña',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => NvrRepairScreen(store: widget.store, nvr: _device),
+                )),
+              ),
+              const SizedBox(height: 8),
+            ],
             _ToolTile(
               icon: Icons.videocam_outlined,
               title: device.isRecorder ? 'Nombres y visibilidad de cámaras' : 'Nombre y PTZ',
