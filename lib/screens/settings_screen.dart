@@ -146,6 +146,16 @@ class SettingsScreen extends StatelessWidget {
                     value: store.showLabels,
                     onChanged: store.setShowLabels,
                   ),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.view_stream_outlined),
+                    title: const Text('Separar cámaras por marca'),
+                    subtitle: const Text(
+                      'Hikvision y Dahua en secciones distintas. Apágalo para verlas todas juntas.',
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                    value: store.groupByBrand,
+                    onChanged: store.setGroupByBrand,
+                  ),
                 ],
               ),
 

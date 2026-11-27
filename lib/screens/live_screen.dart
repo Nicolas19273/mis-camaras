@@ -172,13 +172,62 @@ class _LiveScreenState extends State<LiveScreen> {
     ));
   }
 
+  /// Una cámara del mosaico. [cameras] es el orden en que se ven,
+  /// para que al deslizar en pantalla completa se siga el mismo orden.
+  Widget _tile(AppStore store, List<CameraRef> cameras, int index, StreamQuality quality) {
+    final camera = cameras[index];
+    return CameraTile(
+      key: ValueKey('${camera.device.id}-${camera.channel}-$_reloadToken'),
+      camera: camera,
+      active: _videoActive,
+      registry: _registry,
+      showLabel: store.showLabels,
+      quality: quality,
+      onTap: () => _openCamera(cameras, index),
+      onLongPress: () => _showTileMenu(cameras, index),
+    );
+  }
+
+  /// Mosaico separado por marca: un título y una cuadrícula por marca.
+  Widget _groupedGrid(AppStore store, List<CameraRef> cameras, int columns, StreamQuality quality) {
+    final delegate = SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: columns,
+      mainAxisSpacing: 2,
+      crossAxisSpacing: 2,
+      childAspectRatio: 16 / 9,
+    );
+    final slivers = <Widget>[];
+    var offset = 0;
+    for (final brand in store.brands) {
+      final count = cameras.where((c) => c.device.brand == brand).length;
+      if (count == 0) continue;
+      final start = offset;
+      slivers
+        ..add(SliverToBoxAdapter(child: _BrandHeader(brand: brand, count: count)))
+        ..add(SliverGrid(
+          gridDelegate: delegate,
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => _tile(store, cameras, start + i, quality),
+            childCount: count,
+          ),
+        ));
+      offset += count;
+    }
+    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 12)));
+    return CustomScrollView(slivers: slivers);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge([widget.store, widget.updates]),
       builder: (context, child) {
         final store = widget.store;
-        final cameras = store.cameras;
+        final cameras = store.visibleCameras;
+        final allCount = store.cameras.length;
+        final brands = store.brands;
+        final filter = brands.contains(store.brandFilter) ? store.brandFilter : null;
+        final grouped = store.groupByBrand && filter == null && brands.length > 1;
         final columns = store.gridColumns;
         final quality = store.gridHd ? StreamQuality.main : StreamQuality.sub;
 
@@ -188,7 +237,7 @@ class _LiveScreenState extends State<LiveScreen> {
             surfaceTintColor: Colors.transparent,
             titleSpacing: 16,
             toolbarHeight: 64,
-            title: _Header(registry: _registry, total: cameras.length),
+            title: _Header(registry: _registry, total: allCount),
             actions: [
               if (cameras.isNotEmpty) ...[
                 IconButton(
@@ -216,6 +265,16 @@ class _LiveScreenState extends State<LiveScreen> {
                       : null,
                   onTap: () => showUpdateSheet(context, widget.updates),
                 ),
+              if (brands.length > 1)
+                _BrandBar(
+                  brands: brands,
+                  selected: filter,
+                  counts: {for (final b in brands) b: store.camerasOf(b).length},
+                  total: allCount,
+                  grouped: store.groupByBrand,
+                  onSelect: store.setBrandFilter,
+                  onToggleGrouped: () => store.setGroupByBrand(!store.groupByBrand),
+                ),
               if (cameras.isNotEmpty)
                 _LayoutBar(
                   columns: columns,
@@ -223,12 +282,14 @@ class _LiveScreenState extends State<LiveScreen> {
                   onChanged: store.setGridColumns,
                 ),
               Expanded(
-                child: cameras.isEmpty
+                child: allCount == 0
                     ? _EmptyState(
                         onAdd: () => _pushPaused(DeviceFormScreen(store: store)),
                         onDiscover: () => _pushPaused(DiscoveryScreen(store: store)),
                       )
-                    : GridView.builder(
+                    : grouped
+                        ? _groupedGrid(store, cameras, columns, quality)
+                        : GridView.builder(
                         padding: const EdgeInsets.only(bottom: 12),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: columns,
@@ -237,27 +298,138 @@ class _LiveScreenState extends State<LiveScreen> {
                           childAspectRatio: 16 / 9,
                         ),
                         itemCount: cameras.length,
-                        itemBuilder: (context, index) {
-                          final camera = cameras[index];
-                          return CameraTile(
-                            key: ValueKey(
-                              '${camera.device.id}-${camera.channel}-$_reloadToken',
-                            ),
-                            camera: camera,
-                            active: _videoActive,
-                            registry: _registry,
-                            showLabel: store.showLabels,
-                            quality: quality,
-                            onTap: () => _openCamera(cameras, index),
-                            onLongPress: () => _showTileMenu(cameras, index),
-                          );
-                        },
+                        itemBuilder: (context, index) =>
+                            _tile(store, cameras, index, quality),
                       ),
               ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// Barra para elegir marca: Todas · Hikvision · Dahua, y el botón para
+/// ver las cámaras separadas por marca o todas juntas.
+class _BrandBar extends StatelessWidget {
+  const _BrandBar({
+    required this.brands,
+    required this.selected,
+    required this.counts,
+    required this.total,
+    required this.grouped,
+    required this.onSelect,
+    required this.onToggleGrouped,
+  });
+
+  final List<Brand> brands;
+  final Brand? selected;
+  final Map<Brand, int> counts;
+  final int total;
+  final bool grouped;
+  final ValueChanged<Brand?> onSelect;
+  final VoidCallback onToggleGrouped;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+
+    Widget chip({required String label, required bool active, required VoidCallback onTap, Color? dot}) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Material(
+          color: active ? accent.withValues(alpha: 0.16) : AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (dot != null) ...[
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: active ? accent : AppColors.text,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 8, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  chip(label: 'Todas · $total', active: selected == null, onTap: () => onSelect(null)),
+                  for (final b in brands)
+                    chip(
+                      label: '${b.label} · ${counts[b] ?? 0}',
+                      active: selected == b,
+                      dot: brandColor(b),
+                      onTap: () => onSelect(b),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: grouped ? 'Ver todas juntas' : 'Separar por marca',
+            isSelected: grouped,
+            icon: const Icon(Icons.view_stream_outlined),
+            selectedIcon: Icon(Icons.view_stream, color: accent),
+            onPressed: selected == null ? onToggleGrouped : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Título de cada marca cuando las cámaras se ven separadas.
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader({required this.brand, required this.count});
+
+  final Brand brand;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+      child: Row(
+        children: [
+          BrandBadge(brand: brand, size: 26),
+          const SizedBox(width: 10),
+          Text(brand.label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Text(
+            count == 1 ? '1 cámara' : '$count cámaras',
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -52,6 +52,35 @@ class DevicesScreen extends StatelessWidget {
     if (ok == true) await store.deleteDevice(device.id);
   }
 
+  Widget _card(BuildContext context, Device d, {Key? key}) {
+    final channels = d.channels == 1 ? 'Cámara' : 'NVR · ${d.channels} canales';
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          contentPadding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+          leading: BrandBadge(brand: d.brand, size: 40),
+          title: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(
+            '${d.brand.label} · $channels\n${d.host}',
+            style: const TextStyle(color: AppColors.textMuted, height: 1.35),
+          ),
+          isThreeLine: true,
+          onTap: () => _edit(context, d),
+          trailing: IconButton(
+            tooltip: 'Eliminar',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _confirmDelete(context, d),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -121,50 +150,55 @@ class DevicesScreen extends StatelessWidget {
                     ),
                   ),
                 )
-              : ReorderableListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                  itemCount: devices.length,
-                  onReorder: store.moveDevice,
-                  header: const Padding(
-                    padding: EdgeInsets.fromLTRB(8, 0, 8, 10),
-                    child: Text(
-                      'Mantén presionado un equipo y arrástralo para cambiar el orden del mosaico.',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                    ),
-                  ),
-                  itemBuilder: (context, index) {
-                    final d = devices[index];
-                    final channels = d.channels == 1 ? 'Cámara' : 'NVR · ${d.channels} canales';
-                    return Padding(
-                      key: ValueKey(d.id),
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Material(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        clipBehavior: Clip.antiAlias,
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-                          leading: BrandBadge(brand: d.brand, size: 40),
-                          title: Text(
-                            d.name,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+              : (store.groupByBrand && store.brands.length > 1)
+                  ? ListView(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                      children: [
+                        for (final brand in store.brands) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
+                            child: Row(
+                              children: [
+                                BrandBadge(brand: brand, size: 24),
+                                const SizedBox(width: 10),
+                                Text(
+                                  brand.label,
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '${devices.where((d) => d.brand == brand).length} equipos',
+                                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                                ),
+                              ],
+                            ),
                           ),
-                          subtitle: Text(
-                            '${d.brand.label} · $channels\n${d.host}',
-                            style: const TextStyle(color: AppColors.textMuted, height: 1.35),
-                          ),
-                          isThreeLine: true,
-                          onTap: () => _edit(context, d),
-                          trailing: IconButton(
-                            tooltip: 'Eliminar',
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: () => _confirmDelete(context, d),
+                          for (final d in devices.where((d) => d.brand == brand)) _card(context, d),
+                        ],
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(8, 8, 8, 0),
+                          child: Text(
+                            'Vista separada por marca. Para cambiar el orden, vuelve a "todas juntas" '
+                            'en En vivo o en Ajustes.',
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                           ),
                         ),
+                      ],
+                    )
+                  : ReorderableListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                      itemCount: devices.length,
+                      onReorder: store.moveDevice,
+                      header: const Padding(
+                        padding: EdgeInsets.fromLTRB(8, 0, 8, 10),
+                        child: Text(
+                          'Mantén presionado un equipo y arrástralo para cambiar el orden del mosaico.',
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                        ),
                       ),
-                    );
-                  },
-                ),
+                      itemBuilder: (context, index) =>
+                          _card(context, devices[index], key: ValueKey(devices[index].id)),
+                    ),
         );
       },
     );

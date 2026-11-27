@@ -19,6 +19,8 @@ class AppStore extends ChangeNotifier {
   static const _labelsKey = 'show_labels';
   static const _gridHdKey = 'grid_hd';
   static const _autoUpdateKey = 'auto_update';
+  static const _brandFilterKey = 'brand_filter';
+  static const _groupByBrandKey = 'group_by_brand';
 
   final _secure = const FlutterSecureStorage();
   final List<Device> _devices = [];
@@ -29,6 +31,8 @@ class AppStore extends ChangeNotifier {
   bool _showLabels = true;
   bool _gridHd = false;
   bool _autoUpdate = true;
+  Brand? _brandFilter;
+  bool _groupByBrand = false;
 
   List<Device> get devices => List.unmodifiable(_devices);
 
@@ -46,6 +50,31 @@ class AppStore extends ChangeNotifier {
 
   /// Buscar actualizaciones al abrir la app.
   bool get autoUpdate => _autoUpdate;
+
+  /// Marca elegida en "En vivo" (null = todas).
+  Brand? get brandFilter => _brandFilter;
+
+  /// Mostrar las cámaras separadas por marca (con un título por marca).
+  bool get groupByBrand => _groupByBrand;
+
+  /// Marcas que hay entre los equipos guardados, en orden fijo.
+  List<Brand> get brands {
+    final present = _devices.map((d) => d.brand).toSet();
+    return Brand.values.where(present.contains).toList();
+  }
+
+  /// Cámaras de una marca, en el orden de los equipos.
+  List<CameraRef> camerasOf(Brand brand) =>
+      cameras.where((c) => c.device.brand == brand).toList();
+
+  /// Cámaras como se ven en "En vivo": filtradas por marca y, si está
+  /// activado, ordenadas por marca (Hikvision primero, luego Dahua).
+  List<CameraRef> get visibleCameras {
+    final filter = _brandFilter;
+    if (filter != null && brands.contains(filter)) return camerasOf(filter);
+    if (_groupByBrand) return [for (final b in brands) ...camerasOf(b)];
+    return cameras;
+  }
 
   /// Todas las cámaras a mostrar (cada canal visible de cada equipo).
   List<CameraRef> get cameras => [
@@ -68,6 +97,12 @@ class AppStore extends ChangeNotifier {
     _showLabels = prefs.getBool(_labelsKey) ?? true;
     _gridHd = prefs.getBool(_gridHdKey) ?? false;
     _autoUpdate = prefs.getBool(_autoUpdateKey) ?? true;
+    _groupByBrand = prefs.getBool(_groupByBrandKey) ?? false;
+    final filter = prefs.getString(_brandFilterKey);
+    _brandFilter = null;
+    for (final b in Brand.values) {
+      if (b.name == filter) _brandFilter = b;
+    }
 
     final raw = prefs.getString(_devicesKey);
     if (raw != null) {
@@ -166,6 +201,19 @@ class AppStore extends ChangeNotifier {
     _gridHd = value;
     notifyListeners();
     await (await _p()).setBool(_gridHdKey, value);
+  }
+
+  Future<void> setBrandFilter(Brand? brand) async {
+    _brandFilter = brand;
+    notifyListeners();
+    final p = await _p();
+    brand == null ? await p.remove(_brandFilterKey) : await p.setString(_brandFilterKey, brand.name);
+  }
+
+  Future<void> setGroupByBrand(bool value) async {
+    _groupByBrand = value;
+    notifyListeners();
+    await (await _p()).setBool(_groupByBrandKey, value);
   }
 
   Future<void> setAutoUpdate(bool value) async {

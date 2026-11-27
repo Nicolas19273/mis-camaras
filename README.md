@@ -52,6 +52,8 @@ y en *Ajustes*). Toca **Actualizar ahora**:
   - Reiniciar el equipo.
 - **Foto:** en pantalla completa, el botón de cámara guarda una foto en la galería.
 - **Mosaico:** mantén presionada una cámara para renombrarla u ocultarla.
+- **Por marca:** en En vivo elige *Todas · Hikvision · Dahua* y, con el botón de secciones,
+  míralas separadas por marca o todas juntas (también en Ajustes). Equipos sigue el mismo orden.
 - **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
   y calidad del mosaico.
 - **Cámaras PTZ:** si una cámara se puede mover, en pantalla completa aparece un
