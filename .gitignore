@@ -1,0 +1,11 @@
+# Carpeta que arma GitHub al compilar
+/app/
+
+# Archivos generados por Flutter / Dart
+.dart_tool/
+.packages
+build/
+*.iml
+.idea/
+.vscode/
+.DS_Store
