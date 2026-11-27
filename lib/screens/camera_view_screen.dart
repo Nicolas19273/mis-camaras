@@ -6,16 +6,19 @@ import 'package:flutter/services.dart';
 import '../brands/brand_adapter.dart';
 import '../brands/brands.dart';
 import '../models/device.dart';
+import '../ptz/ptz.dart';
 import '../services/camera_status.dart';
 import '../widgets/brand_badge.dart';
 import '../widgets/live_clock.dart';
 import '../widgets/live_video.dart';
+import '../widgets/ptz_pad.dart';
 import '../widgets/status_dot.dart';
 
 /// Una cámara en pantalla completa.
 /// - Desliza a los lados para pasar a la cámara siguiente o anterior.
 /// - Pellizca para hacer zoom. Doble toque para volver al tamaño normal.
 /// - Toca para mostrar u ocultar los controles.
+/// - Si la cámara es PTZ, aparece un joystick para moverla.
 class CameraViewScreen extends StatefulWidget {
   const CameraViewScreen({
     super.key,
@@ -44,11 +47,24 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
   bool _zoomed = false;
   Timer? _hideTimer;
 
+  /// Resultado de revisar si cada cámara es PTZ (null = no lo es / aún no se sabe).
+  final _ptz = <int, PtzSupport?>{};
+  bool _ptzVisible = true;
+
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _scheduleHide();
+    _detectPtz(widget.initialIndex);
+  }
+
+  void _detectPtz(int index) {
+    if (_ptz.containsKey(index)) return;
+    final camera = widget.cameras[index];
+    PtzService.detect(camera.device, camera.channel).then((support) {
+      if (mounted) setState(() => _ptz[index] = support);
+    });
   }
 
   @override
@@ -93,6 +109,8 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
     final camera = widget.cameras[_index];
     final status = _statuses[_index] ?? LiveStatus.connecting;
     final count = widget.cameras.length;
+    final ptz = _ptz[_index];
+    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -104,10 +122,13 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
                 ? const NeverScrollableScrollPhysics()
                 : const PageScrollPhysics(),
             itemCount: count,
-            onPageChanged: (i) => setState(() {
-              _index = i;
-              _zoomed = false;
-            }),
+            onPageChanged: (i) {
+              setState(() {
+                _index = i;
+                _zoomed = false;
+              });
+              _detectPtz(i);
+            },
             itemBuilder: (context, i) => _CameraPage(
               camera: widget.cameras[i],
               quality: _quality,
@@ -171,6 +192,25 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
                             ],
                           ),
                         ),
+                        if (ptz != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'PTZ',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
                         LiveBadge(status: status),
                       ],
                     ),
@@ -220,6 +260,14 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
                           icon: _muted ? Icons.volume_off : Icons.volume_up,
                           onTap: () => _touch(() => setState(() => _muted = !_muted)),
                         ),
+                        if (ptz != null) ...[
+                          const SizedBox(width: 10),
+                          _ControlButton(
+                            icon: Icons.open_with,
+                            highlighted: _ptzVisible,
+                            onTap: () => _touch(() => setState(() => _ptzVisible = !_ptzVisible)),
+                          ),
+                        ],
                         const SizedBox(width: 10),
                         Text(
                           '${_index + 1} / $count',
@@ -238,6 +286,25 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
               ),
             ),
           ),
+
+          // Joystick PTZ: solo si la cámara se puede mover.
+          if (ptz != null && _ptzVisible)
+            Positioned(
+              left: landscape ? null : 0,
+              right: landscape ? 24 : 0,
+              bottom: landscape ? 80 : 110,
+              child: SafeArea(
+                top: false,
+                child: Center(
+                  child: PtzPad(
+                    key: ValueKey('ptz-$_index'),
+                    support: ptz,
+                    size: landscape ? 132 : 150,
+                    onInteract: _scheduleHide,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -342,18 +409,21 @@ class _ControlButton extends StatelessWidget {
     this.label,
     required this.onTap,
     this.enabled = true,
+    this.highlighted = false,
   });
 
   final IconData? icon;
   final String? label;
   final VoidCallback onTap;
   final bool enabled;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
-    final color = enabled ? Colors.white : Colors.white24;
+    final accent = Theme.of(context).colorScheme.primary;
+    final color = highlighted ? Colors.black : (enabled ? Colors.white : Colors.white24);
     return Material(
-      color: Colors.white.withValues(alpha: 0.12),
+      color: highlighted ? accent : Colors.white.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),

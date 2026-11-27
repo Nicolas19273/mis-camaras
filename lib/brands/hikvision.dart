@@ -1,3 +1,5 @@
+import '../models/device.dart';
+import '../ptz/ptz.dart';
 import 'brand_adapter.dart';
 
 class HikvisionAdapter extends BrandAdapter {
@@ -11,4 +13,9 @@ class HikvisionAdapter extends BrandAdapter {
     final stream = quality == StreamQuality.main ? 1 : 2;
     return '/Streaming/Channels/${channel * 100 + stream}';
   }
+
+  /// PTZ por ISAPI: /ISAPI/PTZCtrl/channels/<canal>/capabilities.
+  @override
+  Future<PtzSupport?> detectPtz(Device device, int channel) =>
+      detectHikvisionPtz(device, channel);
 }

@@ -1,4 +1,5 @@
 import '../models/device.dart';
+import '../ptz/ptz.dart';
 
 /// Calidad del video:
 /// - main: flujo principal (alta resolución), para pantalla completa.
@@ -27,6 +28,10 @@ abstract class BrandAdapter {
     final auth = device.username.isEmpty ? '' : '$user:$pass@';
     return 'rtsp://$auth${device.host}:${device.rtspPort}${rtspPath(channel, quality)}';
   }
+
+  /// Revisa si el canal es una cámara PTZ (que se puede mover).
+  /// Devuelve null si no lo es o si no se pudo comprobar.
+  Future<PtzSupport?> detectPtz(Device device, int channel) async => null;
 
   // ---------------------------------------------------------------------
   // PRÓXIMOS PASOS: aquí se agregarán los métodos de configuración, por ej.

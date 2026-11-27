@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION_BASE: '0.2'
+  VERSION_BASE: '0.3'
 
 jobs:
   apk:
@@ -59,13 +59,15 @@ jobs:
           cp -r lib test app/
           cd app
           flutter pub add media_kit media_kit_video media_kit_libs_video \
-            shared_preferences flutter_secure_storage http path_provider open_filex
+            shared_preferences flutter_secure_storage http path_provider open_filex crypto
 
           # Permisos: internet (cámaras y GitHub) e instalar actualizaciones.
           MANIFEST=android/app/src/main/AndroidManifest.xml
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n    <application|' "$MANIFEST"
           sed -i 's|android:label="mis_camaras"|android:label="Mis Cámaras"|' "$MANIFEST"
-          grep -n "permission\|android:label" "$MANIFEST"
+          # Permite hablar por HTTP con las cámaras de la red local (PTZ y configuración).
+          sed -i 's|<application|<application android:usesCleartextTraffic="true"|' "$MANIFEST"
+          grep -n "permission\|android:label\|Cleartext" "$MANIFEST"
 
           # Ícono propio de la app.
           rm -rf android/app/src/main/res/mipmap-anydpi-v26

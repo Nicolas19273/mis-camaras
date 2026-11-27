@@ -24,7 +24,7 @@ para que *Mis Cámaras* instale actualizaciones.
 
 ---
 
-## Qué hace la versión 0.2
+## Qué hace la versión 0.3
 
 - **En vivo:** mosaico estilo NVR con vistas de **1, 4, 9 o 16** cámaras, estado
   de cada cámara (en vivo, conectando, sin conexión) y botón para **reconectar todas**.
@@ -34,6 +34,9 @@ para que *Mis Cámaras* instale actualizaciones.
 - **Equipos:** agregar, editar, eliminar y **ordenar** (mantén presionado y arrastra).
 - **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
   y calidad del mosaico.
+- **Cámaras PTZ:** si una cámara se puede mover, en pantalla completa aparece un
+  **joystick** (y botones de zoom si tiene zoom óptico). Al soltarlo, la cámara se detiene.
+  Usa el *puerto HTTP* del equipo (normalmente 80).
 - Contraseñas en el almacenamiento seguro del teléfono.
 - Reconexión automática si se corta el video. Si la contraseña está mal, **no**
   reintenta solo, para que la cámara no bloquee tu usuario.
@@ -57,6 +60,9 @@ Por ahora funciona **dentro de la red de tu casa** (mismo WiFi que las cámaras)
 - Si usas un usuario que no es `admin`, revisa que tenga permiso de **vista en vivo**.
 - Tras varias contraseñas erradas, la cámara **bloquea el usuario** unos 30 minutos.
 - Imagen negra o trabada en teléfonos antiguos: cambia el flujo secundario a **H.264**.
+- **No aparece el joystick en una PTZ:** revisa el *puerto HTTP* del equipo en la app
+  y que el usuario tenga permiso de control PTZ. En NVR Dahua, si se mueve la cámara
+  equivocada, avísame: algunos modelos numeran los canales distinto.
 
 ---
 
@@ -97,7 +103,7 @@ Si algún día quieres compilarla tú mismo, con Flutter instalado:
 flutter create --org cl.miscamaras --project-name mis_camaras --platforms android,ios app
 rm -rf app/lib app/test && cp -r lib test app/
 cd app
-flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage http path_provider open_filex
+flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage http path_provider open_filex crypto
 flutter run
 ```
 
