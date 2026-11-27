@@ -14,9 +14,16 @@ GitHub compila la app solo cada vez que se actualiza el código.
    desde Chrome: acéptalo.
 
 **Después:** la app avisa sola cuando hay una versión nueva (aviso en *En vivo*
-y en *Ajustes*). Toca **Actualizar ahora**, confirma en la ventana de Android y listo:
-se instala encima, sin borrar tus equipos. La primera vez Android pedirá permiso
-para que *Mis Cámaras* instale actualizaciones.
+y en *Ajustes*). Toca **Actualizar ahora**:
+- La descarga **sigue en segundo plano** aunque apagues la pantalla o salgas de la
+  app, con una notificación que muestra el avance.
+- Al terminar, toca la notificación **"Actualización descargada"** o vuelve a la app:
+  se abre el instalador solo. Confirma y listo, sin borrar tus equipos.
+- Si ya estaba descargada, el botón dice **Instalar ahora** y no vuelve a descargar.
+- La primera vez Android pedirá permiso para mostrar notificaciones y para que
+  *Mis Cámaras* instale actualizaciones.
+- Si cierras la app a la fuerza desde "Recientes", Android puede detener la descarga:
+  al abrir la app, toca **Continuar descarga**.
 
 > Para que la app pueda revisar las actualizaciones, este repositorio tiene que ser
 > **público**. El código no contiene contraseñas ni datos de tus cámaras: esos se
@@ -103,7 +110,7 @@ Si algún día quieres compilarla tú mismo, con Flutter instalado:
 flutter create --org cl.miscamaras --project-name mis_camaras --platforms android,ios app
 rm -rf app/lib app/test && cp -r lib test app/
 cd app
-flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage http path_provider open_filex crypto
+flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage http open_filex crypto background_downloader
 flutter run
 ```
 

@@ -143,7 +143,11 @@ class _LiveScreenState extends State<LiveScreen> {
             children: [
               if (widget.updates.hasUpdate)
                 _UpdateBanner(
-                  version: widget.updates.release?.version ?? '',
+                  text: widget.updates.summary,
+                  action: widget.updates.isDownloaded ? 'Instalar' : 'Ver',
+                  progress: widget.updates.state == UpdateState.downloading
+                      ? widget.updates.progress
+                      : null,
                   onTap: () => showUpdateSheet(context, widget.updates),
                 ),
               if (cameras.isNotEmpty)
@@ -281,10 +285,19 @@ class _LayoutBar extends StatelessWidget {
 }
 
 class _UpdateBanner extends StatelessWidget {
-  const _UpdateBanner({required this.version, required this.onTap});
+  const _UpdateBanner({
+    required this.text,
+    required this.action,
+    required this.onTap,
+    this.progress,
+  });
 
-  final String version;
+  final String text;
+  final String action;
   final VoidCallback onTap;
+
+  /// Avance de la descarga (null si no está descargando).
+  final double? progress;
 
   @override
   Widget build(BuildContext context) {
@@ -294,27 +307,38 @@ class _UpdateBanner extends StatelessWidget {
       child: Material(
         color: accent.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            child: Row(
-              children: [
-                Icon(Icons.system_update_alt, color: accent, size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Nueva versión $version disponible',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.system_update_alt, color: accent, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        text,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Text(
+                      action,
+                      style: TextStyle(color: accent, fontWeight: FontWeight.w700),
+                    ),
+                  ],
                 ),
-                Text(
-                  'Actualizar',
-                  style: TextStyle(color: accent, fontWeight: FontWeight.w700),
+              ),
+              if (progress != null)
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 3,
+                  backgroundColor: Colors.transparent,
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),

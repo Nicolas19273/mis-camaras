@@ -26,5 +26,9 @@ Future<void> main() async {
   final store = AppStore();
   await store.load();
 
-  runApp(MisCamarasApp(store: store, updates: UpdateService()));
+  // Prepara el actualizador y recupera una descarga que haya quedado a medias.
+  final updates = UpdateService();
+  await updates.init();
+
+  runApp(MisCamarasApp(store: store, updates: updates));
 }

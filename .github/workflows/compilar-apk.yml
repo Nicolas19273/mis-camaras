@@ -59,15 +59,26 @@ jobs:
           cp -r lib test app/
           cd app
           flutter pub add media_kit media_kit_video media_kit_libs_video \
-            shared_preferences flutter_secure_storage http path_provider open_filex crypto
+            shared_preferences flutter_secure_storage http open_filex crypto background_downloader
 
           # Permisos: internet (cámaras y GitHub) e instalar actualizaciones.
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n    <application|' "$MANIFEST"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application|' "$MANIFEST"
           sed -i 's|android:label="mis_camaras"|android:label="Mis Cámaras"|' "$MANIFEST"
           # Permite hablar por HTTP con las cámaras de la red local (PTZ y configuración).
           sed -i 's|<application|<application android:usesCleartextTraffic="true"|' "$MANIFEST"
           grep -n "permission\|android:label\|Cleartext" "$MANIFEST"
+
+          # El descargador en segundo plano necesita Kotlin 2.1 o más nuevo.
+          SETTINGS=android/settings.gradle.kts
+          [ -f "$SETTINGS" ] || SETTINGS=android/settings.gradle
+          KV=$(grep -oE 'org\.jetbrains\.kotlin\.android"\)? version "[0-9.]+' "$SETTINGS" | grep -oE '[0-9.]+$' || true)
+          echo "Kotlin del proyecto: ${KV:-desconocido}"
+          if [ -n "$KV" ] && [ "$(printf '%s\n' "$KV" 2.1.0 | sort -V | head -n1)" != "2.1.0" ]; then
+            sed -i -E 's/(org\.jetbrains\.kotlin\.android"\)? version ")[0-9.]+/\12.1.20/' "$SETTINGS"
+            echo "Kotlin actualizado a 2.1.20"
+          fi
+          grep -n "kotlin" "$SETTINGS" || true
 
           # Ícono propio de la app.
           rm -rf android/app/src/main/res/mipmap-anydpi-v26

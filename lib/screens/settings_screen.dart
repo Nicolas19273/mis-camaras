@@ -75,8 +75,12 @@ class SettingsScreen extends StatelessWidget {
                   if (updates.hasUpdate && release != null)
                     ListTile(
                       leading: Icon(Icons.system_update_alt, color: accent),
-                      title: Text('Versión ${release.version} disponible'),
-                      subtitle: const Text('Toca para actualizar'),
+                      title: Text(updates.summary),
+                      subtitle: Text(
+                        updates.isDownloaded
+                            ? 'Ya está descargada: toca para instalar'
+                            : 'Toca para ver la actualización',
+                      ),
                       trailing: Icon(Icons.chevron_right, color: accent),
                       onTap: () => showUpdateSheet(context, updates),
                     )

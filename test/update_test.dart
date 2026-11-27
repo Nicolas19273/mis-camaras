@@ -30,4 +30,19 @@ void main() {
     });
     expect(info, isNull);
   });
+
+  test('La descarga recuerda la versión si la app se cierra', () {
+    const info = ReleaseInfo(
+      buildNumber: 9,
+      version: '0.3.9',
+      apkUrl: 'https://x/a.apk',
+      apkSize: 1234,
+      notes: 'Notas',
+    );
+    final back = ReleaseInfo.fromMeta(info.toMeta(), info.apkUrl);
+    expect(back!.buildNumber, 9);
+    expect(back.version, '0.3.9');
+    expect(back.apkSize, 1234);
+    expect(ReleaseInfo.fromMeta('basura', 'u'), isNull);
+  });
 }
