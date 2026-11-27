@@ -38,7 +38,7 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => RecordingMonitor.instance.refresh(store.activeDevices));
+    WidgetsBinding.instance.addPostFrameCallback((_) => RecordingMonitor.instance.refresh(store.monitoredDevices));
   }
 
   @override
@@ -129,13 +129,15 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
       if ((network != null && store.networks.length > 1) || !here) network ?? 'Sin red',
       if (!here) 'en espera',
       if (dup != null)
-        dup.device.isRecorder ? 'repetida: se ve en "${dup.device.name}"' : 'repetida',
+        dup.device.isRecorder && dup.device.host != d.host
+            ? 'también es el canal ${dup.channel} de "${dup.device.name}"'
+            : 'repetida (oculta)',
     ];
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: 8),
       child: Opacity(
-        opacity: here && dup == null ? 1 : 0.55,
+        opacity: here && (dup == null || (dup.device.isRecorder && dup.device.host != d.host)) ? 1 : 0.55,
         child: Material(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),

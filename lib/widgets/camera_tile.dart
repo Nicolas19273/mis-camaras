@@ -74,6 +74,13 @@ class _CameraTileState extends State<CameraTile> {
     final camera = widget.camera;
     final url = adapterFor(camera.device.brand)
         .rtspUrl(camera.device, camera.channel, widget.quality);
+    // Si no conecta: la misma cámara vista por el grabador, o su flujo principal.
+    final nvr = camera.recordedBy;
+    final fallback = nvr != null
+        ? adapterFor(nvr.device.brand).rtspUrl(nvr.device, nvr.channel, widget.quality)
+        : widget.quality == StreamQuality.sub
+            ? adapterFor(camera.device.brand).rtspUrl(camera.device, camera.channel, StreamQuality.main)
+            : null;
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -82,7 +89,7 @@ class _CameraTileState extends State<CameraTile> {
         fit: StackFit.expand,
         children: [
           if (widget.active)
-            LiveVideo(url: url, fit: widget.fit, onStatus: _onStatus)
+            LiveVideo(url: url, fallbackUrl: fallback, fit: widget.fit, onStatus: _onStatus)
           else
             const ColoredBox(color: Colors.black),
           // Sombra suave arriba para que se lea el texto sobre cualquier imagen.
@@ -133,7 +140,10 @@ class _CameraTileState extends State<CameraTile> {
                 ] else
                   const Spacer(),
                 if (widget.showRec) ...[
-                  RecBadge(device: camera.device, channel: camera.channel),
+                  RecBadge(
+                    device: camera.recordingSource.device,
+                    channel: camera.recordingSource.channel,
+                  ),
                   const SizedBox(width: 6),
                 ],
                 if (widget.active) StatusDot(status: _status, size: 6),

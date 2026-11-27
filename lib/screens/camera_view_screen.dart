@@ -273,7 +273,10 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
                             ],
                           ),
                         ),
-                        RecBadge(device: camera.device, channel: camera.channel),
+                        RecBadge(
+                          device: camera.recordingSource.device,
+                          channel: camera.recordingSource.channel,
+                        ),
                         const SizedBox(width: 8),
                         if (ptz != null) ...[
                           GestureDetector(
@@ -456,6 +459,12 @@ class _CameraPageState extends State<_CameraPage> {
     final camera = widget.camera;
     final url = adapterFor(camera.device.brand)
         .rtspUrl(camera.device, camera.channel, widget.quality);
+    final nvr = camera.recordedBy;
+    final fallback = nvr != null
+        ? adapterFor(nvr.device.brand).rtspUrl(nvr.device, nvr.channel, widget.quality)
+        : widget.quality == StreamQuality.main
+            ? adapterFor(camera.device.brand).rtspUrl(camera.device, camera.channel, StreamQuality.sub)
+            : null;
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -468,6 +477,7 @@ class _CameraPageState extends State<_CameraPage> {
         child: LiveVideo(
           key: widget.videoKey,
           url: url,
+          fallbackUrl: fallback,
           fit: BoxFit.contain,
           muted: widget.muted,
           compact: false,

@@ -56,7 +56,7 @@ class _LiveScreenState extends State<LiveScreen> {
   }
 
   void _checkRecording() {
-    if (mounted && _videoActive) RecordingMonitor.instance.refresh(widget.store.activeDevices);
+    if (mounted && _videoActive) RecordingMonitor.instance.refresh(widget.store.monitoredDevices);
   }
 
   @override

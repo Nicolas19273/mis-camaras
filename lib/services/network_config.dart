@@ -190,10 +190,11 @@ class NetworkConfig {
   }
 
   /// true si algo responde en esa IP en alguno de esos puertos.
-  static Future<bool> hostResponds(String ip, List<int> ports) async {
+  static Future<bool> hostResponds(String ip, List<int> ports,
+      {Duration timeout = const Duration(milliseconds: 700)}) async {
     for (final port in ports) {
       try {
-        final s = await Socket.connect(ip, port, timeout: const Duration(milliseconds: 700));
+        final s = await Socket.connect(ip, port, timeout: timeout);
         s.destroy();
         return true;
       } catch (_) {}

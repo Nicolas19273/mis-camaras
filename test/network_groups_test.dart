@@ -102,6 +102,42 @@ void main() {
       expect(findDuplicate([nvr, keep], keep), isNull);
     });
 
+    test('En vivo: cada cámara una vez, directo y en el lugar de su canal', () {
+      const nvr2 = Device(
+        id: 'nvr',
+        name: 'NVR',
+        brand: Brand.dahua,
+        host: '192.168.1.10',
+        channels: 4,
+        channelHosts: {1: '192.168.1.64', 2: '192.168.1.65', 3: '192.168.1.66'},
+        channelNames: {3: 'PATIO'},
+      );
+      const direct = Device(id: 'd', name: 'IPC', brand: Brand.hikvision, host: '192.168.1.66');
+      final list = composeCameras(const [nvr2, direct, other], (_) => true);
+      // Canal 4 vacío: no aparece. Canal 3: la cámara directa con el nombre del NVR.
+      expect(list.map((c) => '${c.device.id}:${c.channel}'), ['nvr:1', 'nvr:2', 'd:1', 'c2:1']);
+      final patio = list[2];
+      expect(patio.label, 'PATIO');
+      expect(patio.recordingSource.device.id, 'nvr');
+      expect(patio.recordingSource.channel, 3);
+      // Si el NVR no es de esta red, la cámara directa se ve sola.
+      final away = composeCameras(const [nvr2, direct], (d) => d.id != 'nvr');
+      expect(away.map((c) => c.device.id), ['d']);
+    });
+
+    test('En un DVR/XVR no se ocultan los canales analógicos', () {
+      const xvr = Device(
+        id: 'x',
+        name: 'XVR',
+        brand: Brand.dahua,
+        host: '192.168.1.20',
+        channels: 6,
+        channelHosts: {5: '192.168.1.70'},
+      );
+      expect(isEmptyRecorderChannel(xvr, 1), isFalse);
+      expect(composeCameras(const [xvr], (_) => true).length, 6);
+    });
+
     test('Lee la IP de cada canal del grabador', () {
       const hik = '<InputProxyChannelList><InputProxyChannel version="2.0"><id>1</id><name>Patio</name>'
           '<sourceInputPortDescriptor><proxyProtocol>HIKVISION</proxyProtocol>'

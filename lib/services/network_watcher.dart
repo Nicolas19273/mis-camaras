@@ -24,6 +24,7 @@ class NetworkWatcher with WidgetsBindingObserver {
   bool _busy = false;
   final _synced = <String>{};
   final _triedAt = <String, DateTime>{};
+  DateTime? _probedAt;
 
   static NetworkWatcher? instance;
 
@@ -92,7 +93,14 @@ class NetworkWatcher with WidgetsBindingObserver {
     try {
       final info = await read();
       final changed = store.updateNetInfo(info);
-      if (changed || force || !store.probed) await _probeAndAssign(info);
+      // Se vuelve a probar cada minuto mientras queden equipos sin red,
+      // por si alguno tardó en responder la primera vez.
+      final pending = store.devices.any((d) => d.isLocalHost && d.network == null);
+      final stale = _probedAt == null || DateTime.now().difference(_probedAt!) > const Duration(minutes: 1);
+      if (changed || force || !store.probed || (pending && stale)) {
+        _probedAt = DateTime.now();
+        await _probeAndAssign(info);
+      }
       await _syncRecorders();
     } catch (_) {
       // Se reintenta en la próxima vuelta.
@@ -107,7 +115,9 @@ class NetworkWatcher with WidgetsBindingObserver {
     if (info.hasNetwork) {
       final pending = store.devices.where((d) => d.isLocalHost && d.network == null).toList();
       await Future.wait(pending.map((d) async {
-        if (await NetworkConfig.hostResponds(d.host, [d.httpPort, d.rtspPort])) reachable.add(d.id);
+        final ok = await NetworkConfig.hostResponds(d.host, [d.httpPort, d.rtspPort],
+            timeout: const Duration(milliseconds: 1500));
+        if (ok) reachable.add(d.id);
       }));
       if (reachable.isNotEmpty) {
         final net = store.ensureCurrentNetwork();

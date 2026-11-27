@@ -90,13 +90,47 @@ class AppStore extends ChangeNotifier {
     return cameras;
   }
 
-  /// Cámaras a mostrar en En vivo: las de la red actual, sin las ocultas
-  /// y sin las repetidas (cámaras que ya se ven dentro de un grabador).
-  List<CameraRef> get cameras => [
-        for (final d in _devices)
-          if (isHere(d) && duplicateOf(d) == null)
-            for (var ch = 1; ch <= d.channels; ch++)
-              if (!d.hiddenChannels.contains(ch)) CameraRef(d, ch),
+  /// Cámaras a mostrar en En vivo: las de la red actual, sin las ocultas y
+  /// cada una una sola vez. Si una cámara se agregó sola y también está en un
+  /// grabador, se muestra en el lugar de su canal, pero conectando directo a
+  /// la cámara (más estable) y con el "● REC" del grabador, que es quien graba.
+  /// Los canales del grabador sin cámara conectada no se muestran.
+  List<CameraRef> get cameras => composeCameras(_devices, isHere);
+
+  /// Cómo mostrar una cámara elegida en un grupo: si también está en un NVR,
+  /// se conecta directo y el "● REC" sale del NVR (igual que en En vivo).
+  CameraRef present(CameraRef c) {
+    final d = c.device;
+    if (!d.isRecorder) {
+      final dup = duplicateOf(d);
+      if (dup != null && dup.device.isRecorder && dup.device.host != d.host) {
+        return CameraRef(d, c.channel, alias: c.alias, recordedBy: CameraRef(dup.device, dup.channel));
+      }
+      return c;
+    }
+    for (final x in _devices) {
+      if (x.isRecorder || !isHere(x) || x.hiddenChannels.contains(1)) continue;
+      final dup = duplicateOf(x);
+      if (dup != null && dup.device.id == d.id && dup.channel == c.channel && x.host != d.host) {
+        final nvrName = d.channelNames[c.channel]?.trim() ?? '';
+        final own = x.channelNames[1]?.trim() ?? '';
+        return CameraRef(x, 1,
+            alias: own.isNotEmpty ? own : (nvrName.isNotEmpty ? nvrName : null), recordedBy: c);
+      }
+    }
+    return c;
+  }
+
+  /// Canal de un NVR sin cámara conectada (según la lista del propio NVR).
+  /// Solo se decide en grabadores cuyos canales de red empiezan en el 1; en
+  /// DVR/XVR los primeros canales son analógicos y no aparecen en esa lista.
+  bool isEmptyChannel(Device d, int channel) => isEmptyRecorderChannel(d, channel);
+
+  /// Equipos cuya grabación se revisa (las cámaras que graba un NVR no:
+  /// su "● REC" sale del NVR).
+  List<Device> get monitoredDevices => [
+        for (final d in activeDevices)
+          if (duplicateOf(d) == null) d,
       ];
 
   // --- Redes ---------------------------------------------------------------------
@@ -555,5 +589,51 @@ class AppStore extends ChangeNotifier {
     }
   }
   return null;
+}
+
+/// Canal de un NVR sin cámara conectada (según la lista del propio NVR).
+/// Solo se decide en grabadores cuyos canales de red empiezan en el 1; en
+/// DVR/XVR los primeros canales son analógicos y no aparecen en esa lista.
+bool isEmptyRecorderChannel(Device d, int channel) {
+  if (!d.isRecorder || d.channelHosts.isEmpty || !d.channelHosts.containsKey(1)) return false;
+  return !d.channelHosts.containsKey(channel);
+}
+
+/// Arma la lista de En vivo: cada cámara una sola vez. Si una cámara se
+/// agregó sola y también está en un grabador, va en el lugar de su canal,
+/// conectando directo a la cámara y con el "● REC" del grabador.
+List<CameraRef> composeCameras(List<Device> devices, bool Function(Device) isHere) {
+  final covered = <String, Device>{};
+  for (final d in devices) {
+    final dup = isHere(d) ? findDuplicate(devices, d) : null;
+    if (dup != null && dup.device.isRecorder && dup.device.host != d.host && isHere(dup.device)) {
+      covered['${dup.device.id}#${dup.channel}'] = d;
+    }
+  }
+  final result = <CameraRef>[];
+  for (final d in devices) {
+    if (!isHere(d)) continue;
+    final dup = findDuplicate(devices, d);
+    if (dup != null && (!dup.device.isRecorder || isHere(dup.device))) continue;
+    for (var ch = 1; ch <= d.channels; ch++) {
+      if (d.hiddenChannels.contains(ch)) continue;
+      final direct = covered['${d.id}#$ch'];
+      if (direct != null) {
+        if (direct.hiddenChannels.contains(1)) continue;
+        final own = direct.channelNames[1]?.trim() ?? '';
+        final nvrName = d.channelNames[ch]?.trim() ?? '';
+        result.add(CameraRef(
+          direct,
+          1,
+          alias: own.isNotEmpty ? own : (nvrName.isNotEmpty ? nvrName : null),
+          recordedBy: CameraRef(d, ch),
+        ));
+        continue;
+      }
+      if (isEmptyRecorderChannel(d, ch)) continue;
+      result.add(CameraRef(d, ch));
+    }
+  }
+  return result;
 }
 

@@ -6,8 +6,8 @@ import '../services/app_store.dart';
 import '../services/network_watcher.dart';
 import '../theme.dart';
 
-/// Barra fina en En vivo: en qué red estás, cuántos equipos quedaron en
-/// espera (de otras redes) y cuántas cámaras repetidas se ocultaron.
+/// Barra fina en En vivo: en qué red estás y cuántos equipos quedaron en
+/// espera (de otras redes).
 class NetworkBar extends StatelessWidget {
   const NetworkBar({super.key, required this.store});
 
@@ -16,10 +16,9 @@ class NetworkBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final standby = store.standbyDevices.length;
-    final dups = store.duplicates.length;
     final showAll = store.showAllNetworks;
-    if (!store.separateNetworks && dups == 0) return const SizedBox.shrink();
-    if (standby == 0 && dups == 0 && !showAll && store.networks.length < 2) return const SizedBox.shrink();
+    if (!store.separateNetworks) return const SizedBox.shrink();
+    if (standby == 0 && !showAll && store.networks.length < 2) return const SizedBox.shrink();
 
     final info = store.netInfo;
     final here = store.currentNetwork;
@@ -30,7 +29,6 @@ class NetworkBar extends StatelessWidget {
             : here?.name ?? KnownNetwork.defaultName(info);
     final parts = [
       if (showAll) 'viendo todas las redes' else if (standby > 0) '$standby en espera',
-      if (dups > 0) '$dups ${dups == 1 ? 'repetida oculta' : 'repetidas ocultas'}',
     ];
 
     return Padding(
@@ -160,26 +158,6 @@ class _NetworkSheetState extends State<_NetworkSheet> {
     if (ok == true) await store.forgetNetwork(n.id);
   }
 
-  Future<void> _removeDuplicates() async {
-    final n = store.duplicates.length;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('Quitar ${n == 1 ? 'la cámara repetida' : 'las $n cámaras repetidas'}'),
-        content: const Text(
-          'Se quitan de la app las cámaras sueltas que ya se ven dentro de un grabador. '
-          'Si tenían nombre, el nombre pasa al canal del grabador. Las cámaras no se tocan.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Quitar')),
-        ],
-      ),
-    );
-    if (ok == true) await store.removeDuplicates();
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -264,26 +242,26 @@ class _NetworkSheetState extends State<_NetworkSheet> {
                 ),
             ],
             if (dups.isNotEmpty) ...[
-              const SectionLabel('Cámaras repetidas (ocultas)'),
+              const SectionLabel('Cámaras que también están en un grabador'),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Text(
+                  'Se ven una sola vez, en el lugar de su canal: conectando directo a la cámara '
+                  '(más estable) y con el ● REC del grabador, que es quien graba.',
+                  style: muted,
+                ),
+              ),
               for (final d in dups)
                 ListTile(
                   dense: true,
-                  leading: const Icon(Icons.copy_all_outlined, color: AppColors.textMuted),
+                  leading: const Icon(Icons.link, color: AppColors.textMuted),
                   title: Text(d.name),
                   subtitle: Text(_whereDuplicate(d), style: muted),
                   trailing: TextButton(
                     onPressed: () => store.setKeepDuplicate(d, true),
-                    child: const Text('Mostrar'),
+                    child: const Text('Ver aparte'),
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: OutlinedButton.icon(
-                  onPressed: _removeDuplicates,
-                  icon: const Icon(Icons.cleaning_services_outlined),
-                  label: const Text('Quitar repetidas de la app'),
-                ),
-              ),
             ],
             if (store.networks.isNotEmpty) ...[
               const SectionLabel('Redes guardadas'),
@@ -315,7 +293,7 @@ class _NetworkSheetState extends State<_NetworkSheet> {
     final w = store.duplicateOf(d);
     if (w == null) return d.host;
     return w.device.isRecorder
-        ? 'Ya se ve en "${w.device.name}" (cámara ${w.channel})'
+        ? 'Canal ${w.channel} de "${w.device.name}"'
         : 'Agregada dos veces: igual a "${w.device.name}"';
   }
 }

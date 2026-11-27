@@ -45,10 +45,12 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
   void _checkRecording() {
     final group = widget.store.groupById(widget.groupId);
     if (!mounted || !_videoActive || group == null) return;
-    final devices = {
-      for (final c in widget.store.camerasOfGroup(group))
-        if (widget.store.isHere(c.device)) c.device.id: c.device,
-    };
+    final devices = <String, Device>{};
+    for (final c in widget.store.camerasOfGroup(group)) {
+      if (!widget.store.isHere(c.device)) continue;
+      final d = widget.store.present(c).recordingSource.device;
+      devices[d.id] = d;
+    }
     RecordingMonitor.instance.refresh(devices.values);
   }
 
@@ -98,7 +100,11 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
               title: Text('Quitar de "${group.name}"'),
               onTap: () {
                 Navigator.of(ctx).pop();
-                widget.store.setInGroup(group.id, camera, false);
+                () async {
+                  await widget.store.setInGroup(group.id, camera, false);
+                  final nvr = camera.recordedBy;
+                  if (nvr != null) await widget.store.setInGroup(group.id, nvr, false);
+                }();
               },
             ),
             const SizedBox(height: 8),
@@ -123,7 +129,10 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
         }
         final all = store.camerasOfGroup(group);
         // Las cámaras de otras redes quedan en espera (no se conectan).
-        final cameras = all.where((c) => store.isHere(c.device)).toList();
+        final cameras = [
+          for (final c in all)
+            if (store.isHere(c.device)) store.present(c),
+        ];
         final waiting = all.length - cameras.length;
         final columns = store.gridColumns;
         final quality = store.gridHd ? StreamQuality.main : StreamQuality.sub;

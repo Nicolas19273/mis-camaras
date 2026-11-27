@@ -54,6 +54,7 @@ class RecordingMonitor extends ChangeNotifier {
 
   /// Cuántas de esas cámaras están grabando (o listas para grabar).
   int countRecording(Iterable<CameraRef> cameras) => cameras
+      .map((c) => c.recordingSource)
       .where((c) => const {RecState.recording, RecState.armed}.contains(stateOf(c.device, c.channel)))
       .length;
 

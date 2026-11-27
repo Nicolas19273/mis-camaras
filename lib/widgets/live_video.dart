@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -11,8 +12,10 @@ import '../theme.dart';
 /// Reproductor de video en vivo por RTSP.
 /// - Muestra un indicador mientras conecta.
 /// - Si el video se corta después de haber funcionado, se reconecta solo.
-/// - Si nunca conectó, NO reintenta solo (para no bloquear la cuenta de la
-///   cámara por intentos fallidos si la contraseña está mal).
+/// - Si no conecta la primera vez, prueba la ruta alternativa ([fallbackUrl])
+///   y reintenta unas pocas veces más (muchas cámaras juntas pueden saturar
+///   al grabador por un momento).
+/// - Si la contraseña está mal (401), NO reintenta, para no bloquear la cuenta.
 /// - Se detiene cuando la app pasa a segundo plano y vuelve al regresar.
 class LiveVideo extends StatefulWidget {
   const LiveVideo({
@@ -22,9 +25,14 @@ class LiveVideo extends StatefulWidget {
     this.muted = true,
     this.compact = true,
     this.onStatus,
+    this.fallbackUrl,
   });
 
   final String url;
+
+  /// Otra dirección para la misma cámara si [url] no funciona
+  /// (por ejemplo, el flujo principal si falla el secundario).
+  final String? fallbackUrl;
   final BoxFit fit;
   final bool muted;
 
@@ -51,6 +59,14 @@ class LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
   String? _error;
   LiveStatus? _lastStatus;
 
+  /// Dirección en uso (la normal o la alternativa).
+  late String _url = widget.url;
+
+  /// Intentos fallidos sin haber visto video nunca.
+  int _failures = 0;
+  static const _retryDelays = [Duration(seconds: 4), Duration(seconds: 10), Duration(seconds: 25)];
+  static final _random = Random();
+
   @override
   void initState() {
     super.initState();
@@ -76,7 +92,11 @@ class LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
       if (!mounted || _suspended || _hasVideo) return;
       setState(() => _error = message);
       _emitStatus();
-      if (_everPlayed) _scheduleRetry(const Duration(seconds: 5));
+      if (_everPlayed) {
+        _scheduleRetry(const Duration(seconds: 5));
+      } else {
+        _onFirstFailure(message);
+      }
     }));
 
     // En vivo, "terminado" significa que se cortó la conexión.
@@ -87,10 +107,41 @@ class LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
         if (!_everPlayed) _error ??= 'Sin señal';
       });
       _emitStatus();
-      if (_everPlayed) _scheduleRetry(const Duration(seconds: 3));
+      if (_everPlayed) {
+        _scheduleRetry(const Duration(seconds: 3));
+      } else {
+        _onFirstFailure(_error ?? '');
+      }
     }));
 
-    _open();
+    // Pequeña espera al azar: así no se conectan todas las cámaras en el
+    // mismo instante (los grabadores rechazan conexiones si llegan juntas).
+    _retryTimer = Timer(Duration(milliseconds: _random.nextInt(900)), () {
+      if (!_disposed && !_suspended) _open();
+    });
+  }
+
+  static bool _isAuthError(String message) {
+    final m = message.toLowerCase();
+    return m.contains('401') || m.contains('unauthorized') || m.contains('authoriz');
+  }
+
+  /// Nunca llegó video: prueba la ruta alternativa y luego reintenta
+  /// unas pocas veces, salvo que sea la contraseña.
+  void _onFirstFailure(String message) {
+    if (_isAuthError(message) || (_retryTimer?.isActive ?? false)) return;
+    final alt = widget.fallbackUrl;
+    if (alt != null && _url != alt) {
+      _url = alt;
+      _scheduleRetry(const Duration(milliseconds: 300));
+      return;
+    }
+    if (_failures >= _retryDelays.length) return;
+    final delay = _retryDelays[_failures];
+    _failures++;
+    // Vuelve a la dirección normal en cada vuelta (la alternativa se prueba de nuevo si falla).
+    if (alt != null) _url = widget.url;
+    _scheduleRetry(delay);
   }
 
   @override
@@ -98,6 +149,8 @@ class LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
       _everPlayed = false;
+      _failures = 0;
+      _url = widget.url;
       _open();
     } else if (oldWidget.muted != widget.muted) {
       _player.setVolume(widget.muted ? 0 : 100);
@@ -151,7 +204,7 @@ class LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
     if (_disposed) return;
     await _player.setVolume(widget.muted ? 0 : 100);
     if (_disposed) return;
-    await _player.open(Media(widget.url));
+    await _player.open(Media(_url));
   }
 
   /// Foto del cuadro actual (JPEG), o null si todavía no hay video.

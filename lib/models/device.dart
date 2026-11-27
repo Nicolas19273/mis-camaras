@@ -239,10 +239,20 @@ class Device {
 
 /// Una cámara concreta para mostrar en pantalla: un equipo + un canal.
 class CameraRef {
-  const CameraRef(this.device, this.channel);
+  const CameraRef(this.device, this.channel, {this.alias, this.recordedBy});
 
   final Device device;
   final int channel;
 
-  String get label => device.channelLabel(channel);
+  /// Nombre a mostrar en vez del propio (por ejemplo, el del canal del NVR).
+  final String? alias;
+
+  /// Canal del grabador que graba esta cámara (cuando la cámara se ve
+  /// directo pero la graba un NVR). El "● REC" se toma de ahí.
+  final CameraRef? recordedBy;
+
+  String get label => alias ?? device.channelLabel(channel);
+
+  /// De dónde sale el estado de grabación.
+  CameraRef get recordingSource => recordedBy ?? this;
 }
