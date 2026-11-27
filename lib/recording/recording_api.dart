@@ -41,12 +41,15 @@ abstract class RecordingApi {
         _ => null,
       };
 
-  /// Cuánto puede tener el último video para decir "está grabando ahora".
-  Duration get tolerance;
+  /// Tiempo máximo para buscar videos (en grabadores grandes tarda).
+  static const searchTimeout = Duration(seconds: 20);
 
   Future<DateTime> deviceTime();
-  Future<List<StorageDisk>> storage();
+
+  /// Discos del equipo. null = no se pudo leer.
+  Future<List<StorageDisk>?> storage();
   Future<Map<int, RecordMode>> modes();
+  /// Último video de cada canal. Los canales cuya búsqueda falló no aparecen.
   Future<Map<int, DateTime?>> lastRecordings(List<int> channels, DateTime from, DateTime to);
   Future<ApplyResult> apply(List<int> channels, RecordMode mode);
   Future<void> format(StorageDisk disk);
@@ -61,19 +64,22 @@ abstract class RecordingApi {
   /// Revisión completa: discos, modo de cada cámara y su último video.
   Future<RecordingReport> report({Duration window = const Duration(hours: 24)}) async {
     final now = await deviceTime();
-    final disks = await storage();
+    List<StorageDisk>? disks;
+    try {
+      disks = await storage();
+    } on RecordingException catch (e) {
+      if (e.auth) rethrow;
+    } catch (_) {
+      // Sin datos del disco: se sigue con lo demás.
+    }
     final modes = await this.modes();
     final active = allChannels.where((c) => modes[c] != RecordMode.off).toList();
-    final last = disks.any((d) => d.ok) && active.isNotEmpty
+    // Si se sabe que no hay disco que funcione, no hay videos que buscar.
+    final canRecord = disks == null || disks.any((d) => d.ok);
+    final last = canRecord && active.isNotEmpty
         ? await lastRecordings(active, now.subtract(window), now.add(const Duration(hours: 1)))
         : <int, DateTime?>{};
-    return RecordingReport(
-      disks: disks,
-      modes: modes,
-      lastEnd: last,
-      deviceNow: now,
-      tolerance: tolerance,
-    );
+    return RecordingReport(disks: disks, modes: modes, lastEnd: last, deviceNow: now);
   }
 
   void checkAuth(int status) {
@@ -94,9 +100,6 @@ class HikvisionRecording extends RecordingApi {
   HikvisionRecording(super.device);
 
   final _random = Random();
-
-  @override
-  Duration get tolerance => const Duration(minutes: 15);
 
   String _searchId() {
     String hex(int n) => List.generate(n, (_) => _random.nextInt(16).toRadixString(16)).join();
@@ -125,15 +128,14 @@ class HikvisionRecording extends RecordingApi {
   }
 
   @override
-  Future<List<StorageDisk>> storage() async {
+  Future<List<StorageDisk>?> storage() async {
     final r = await http.get('/ISAPI/ContentMgmt/Storage');
     checkAuth(r.statusCode);
     if (r.statusCode == 200) return parseHikvisionStorage(r.body);
     final h = await http.get('/ISAPI/ContentMgmt/Storage/hdd');
     checkAuth(h.statusCode);
     if (h.statusCode == 200) return parseHikvisionStorage(h.body);
-    if (r.statusCode == 404 && h.statusCode == 404) return const [];
-    throw RecordingException('El equipo no informó sus discos (${r.statusCode}).');
+    return null;
   }
 
   @override
@@ -169,9 +171,14 @@ class HikvisionRecording extends RecordingApi {
     var position = 0;
     for (var page = 0; page < 6; page++) {
       final body = buildHikvisionSearch(id, [hikvisionTrack(channel)], from, to, position: position, maxResults: 50);
-      final r = await http.send('POST', '/ISAPI/ContentMgmt/search', body: body, contentType: 'application/xml');
+      final r = await http.send('POST', '/ISAPI/ContentMgmt/search',
+          body: body, contentType: 'application/xml', timeout: RecordingApi.searchTimeout);
       checkAuth(r.statusCode);
-      if (r.statusCode != 200) break;
+      if (r.statusCode != 200) {
+        // Sin respuesta válida: no se sabe (no es lo mismo que "no hay video").
+        if (page == 0) throw RecordingException('La búsqueda respondió ${r.statusCode}.');
+        break;
+      }
       final parsed = parseHikvisionSearch(r.body);
       for (final s in parsed.spans) {
         if (last == null || s.end.isAfter(last)) last = s.end;
@@ -192,10 +199,10 @@ class HikvisionRecording extends RecordingApi {
         var last = await _lastIn(ch, recentFrom.isAfter(from) ? recentFrom : from, to);
         if (last == null && recentFrom.isAfter(from)) last = await _lastIn(ch, from, to);
         result[ch] = last;
-      } on RecordingException {
-        rethrow;
+      } on RecordingException catch (e) {
+        if (e.auth) rethrow;
       } catch (_) {
-        result[ch] = null;
+        // No se pudo buscar en este canal: queda sin dato.
       }
     }
     return result;
@@ -314,20 +321,16 @@ class DahuaRecording extends RecordingApi {
 
   String? _recordBody;
 
-  /// Dahua guarda en archivos de hasta 1 hora: el actual puede no aparecer aún.
-  @override
-  Duration get tolerance => const Duration(minutes: 75);
-
-  Future<String> _get(String path) async {
-    final r = await http.get(path);
+  Future<String> _get(String path, {Duration? timeout}) async {
+    final r = await http.send('GET', path, timeout: timeout);
     checkAuth(r.statusCode);
     if (r.statusCode != 200) throw RecordingException('El equipo respondió ${r.statusCode}.');
     return r.body;
   }
 
-  Future<String?> _tryGet(String path) async {
+  Future<String?> _tryGet(String path, {Duration? timeout}) async {
     try {
-      return await _get(path);
+      return await _get(path, timeout: timeout);
     } on RecordingException catch (e) {
       if (e.auth) rethrow;
       return null;
@@ -354,9 +357,9 @@ class DahuaRecording extends RecordingApi {
   }
 
   @override
-  Future<List<StorageDisk>> storage() async {
+  Future<List<StorageDisk>?> storage() async {
     final body = await _tryGet('/cgi-bin/storageDevice.cgi?action=getDeviceAllInfo');
-    return body == null ? const [] : parseDahuaStorage(body);
+    return body == null ? null : parseDahuaStorage(body);
   }
 
   @override
@@ -376,22 +379,30 @@ class DahuaRecording extends RecordingApi {
     final start = Uri.encodeComponent(dahuaTime(from));
     final end = Uri.encodeComponent(dahuaTime(to));
     try {
+      const t = RecordingApi.searchTimeout;
       for (final ch in channels) {
         DateTime? last;
-        final found = await _tryGet('/cgi-bin/mediaFileFind.cgi?action=findFile&object=$object'
-            '&condition.Channel=$ch&condition.StartTime=$start&condition.EndTime=$end&condition.Types[0]=dav');
+        var answered = false;
+        final found = await _tryGet(
+            '/cgi-bin/mediaFileFind.cgi?action=findFile&object=$object'
+            '&condition.Channel=$ch&condition.StartTime=$start&condition.EndTime=$end&condition.Types[0]=dav',
+            timeout: t);
         if (found != null) {
           for (var page = 0; page < 10; page++) {
-            final next = await _tryGet('/cgi-bin/mediaFileFind.cgi?action=findNextFile&object=$object&count=100');
+            final next = await _tryGet(
+                '/cgi-bin/mediaFileFind.cgi?action=findNextFile&object=$object&count=100',
+                timeout: t);
             if (next == null) break;
-            final t = parseDahuaLastFileEnd(next);
-            if (t != null && (last == null || t.isAfter(last))) last = t;
+            answered = true;
+            final end = parseDahuaLastFileEnd(next);
+            if (end != null && (last == null || end.isAfter(last))) last = end;
             final count = int.tryParse(keyValue(next, 'found') ?? '') ?? 0;
             if (count < 100) break;
           }
           await _tryGet('/cgi-bin/mediaFileFind.cgi?action=close&object=$object');
         }
-        result[ch] = last;
+        // Solo cuenta si la búsqueda respondió; si falló, queda sin dato.
+        if (answered) result[ch] = last;
       }
     } finally {
       await _tryGet('/cgi-bin/mediaFileFind.cgi?action=destroy&object=$object');

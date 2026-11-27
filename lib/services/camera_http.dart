@@ -35,12 +35,14 @@ class CameraHttp {
     String path, {
     String? body,
     String? contentType,
+    Duration? timeout,
   }) async {
-    var res = await _send(method, path, body, contentType);
+    final limit = timeout ?? CameraHttp.timeout;
+    var res = await _send(method, path, body, contentType, limit);
     if (res.statusCode == 401) {
       final challenge = res.headers['www-authenticate'] ?? '';
       if (!_learnChallenge(challenge)) return res;
-      res = await _send(method, path, body, contentType);
+      res = await _send(method, path, body, contentType, limit);
     }
     return res;
   }
@@ -64,7 +66,8 @@ class CameraHttp {
     return false;
   }
 
-  Future<http.Response> _send(String method, String path, String? body, String? contentType) async {
+  Future<http.Response> _send(
+      String method, String path, String? body, String? contentType, Duration timeout) async {
     final uri = Uri.parse('http://${device.host}:${device.httpPort}$path');
     final request = http.Request(method, uri);
     if (contentType != null) request.headers['Content-Type'] = contentType;

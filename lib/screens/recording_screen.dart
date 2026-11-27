@@ -27,6 +27,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
   String? _busy;
   RecordMode _choice = RecordMode.continuous;
   bool _choiceTouched = false;
+  bool _keep = true;
+
+  RecordingMonitor get _monitor => RecordingMonitor.instance;
+
+  /// Estado que se muestra (el mismo que el "● REC" de las cámaras).
+  RecState _state(int channel) => _monitor.stateOf(_device, channel);
 
   Device get _device => widget.store.deviceById(widget.device.id) ?? widget.device;
   bool get _supported => RecordingApi.supports(_device);
@@ -34,6 +40,8 @@ class _RecordingScreenState extends State<RecordingScreen> {
   @override
   void initState() {
     super.initState();
+    // Por defecto activado; si ya se configuró antes, se respeta lo elegido.
+    _keep = _monitor.keeps(widget.device) || !_monitor.configured(widget.device);
     _load();
   }
 
@@ -54,7 +62,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     final api = RecordingApi.forDevice(_device)!;
     try {
       final r = await api.report();
-      RecordingMonitor.instance.update(_device, r);
+      _monitor.update(_device, r);
       if (!mounted) return;
       setState(() {
         _report = r;
@@ -79,7 +87,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     final api = RecordingApi.forDevice(_device)!;
     try {
       final res = await api.apply(channels, mode);
-      RecordingMonitor.instance.invalidate(_device);
+      if (res.ok.isNotEmpty) _monitor.markApplied(_device, res.ok, mode, keep: _keep);
       if (res.ok.isNotEmpty && mode != RecordMode.off) {
         if (mounted) setState(() => _busy = 'Comprobando que empiece a grabar…');
         await Future<void>.delayed(const Duration(seconds: 10));
@@ -108,14 +116,22 @@ class _RecordingScreenState extends State<RecordingScreen> {
       ...res.warnings,
     ];
     final r = _report;
-    if (r != null && mode == RecordMode.continuous && res.ok.isNotEmpty) {
-      final rec = res.ok.where((c) => r.stateOf(c) == RecState.recording).length;
-      lines.add(rec == res.ok.length
+    if (r != null && mode != RecordMode.off && res.ok.isNotEmpty) {
+      final now = r.deviceNow;
+      final fresh = res.ok.where((c) {
+        final t = r.lastEnd[c];
+        return t != null && now.difference(t).inMinutes < 15;
+      }).length;
+      lines.add(fresh == res.ok.length
           ? 'Comprobado: ya hay video nuevo guardado.'
-          : 'Todavía no aparece video nuevo en ${_count(res.ok.length - rec)}. '
-              'A veces tarda unos minutos: vuelve a revisar con el botón de actualizar.');
+          : 'Queda grabando. El video nuevo puede tardar en aparecer en la búsqueda '
+              '(en Dahua hasta 1 hora), pero mientras tanto verás el ● REC.');
+      if (_keep) {
+        lines.add('Mantener siempre así: si el equipo cambia o apaga la grabación, '
+            'la app la vuelve a activar cuando esté abierta.');
+      }
     }
-    if (r != null && !r.storageOk && mode != RecordMode.off) {
+    if (r != null && r.storageOk == false && mode != RecordMode.off) {
       lines.add('Ojo: el equipo no tiene un disco o tarjeta SD funcionando, así que no podrá guardar video.');
     }
     await showDialog<void>(
@@ -257,6 +273,14 @@ class _RecordingScreenState extends State<RecordingScreen> {
     ),
   ];
 
+  String _ago(DateTime t) {
+    final m = DateTime.now().difference(t).inMinutes;
+    if (m < 1) return 'recién';
+    if (m < 60) return 'hace $m min';
+    final h = m ~/ 60;
+    return h < 24 ? 'hace $h h' : 'hace ${h ~/ 24} días';
+  }
+
   String _when(DateTime? t, DateTime now) {
     if (t == null) return 'sin video en las últimas 24 horas';
     final diff = now.difference(t);
@@ -309,6 +333,24 @@ class _RecordingScreenState extends State<RecordingScreen> {
               icon: const Icon(Icons.check),
               label: Text(_device.isRecorder ? 'Aplicar a las ${_device.channels} cámaras' : 'Aplicar'),
               style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+            ),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              value: _keep,
+              onChanged: (v) {
+                setState(() => _keep = v);
+                if (!v) {
+                  _monitor.setKeep(_device, false, const {});
+                } else if (_monitor.inGrace(_device) || r.modes.isNotEmpty) {
+                  _monitor.setKeep(_device, true, r.modes);
+                }
+              },
+              title: const Text('Mantener siempre así'),
+              subtitle: const Text(
+                'Si el equipo cambia o apaga la grabación, la app la vuelve a activar.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12.5),
+              ),
             ),
             if (_device.isRecorder) ...[
               const SectionLabel('Cada cámara'),
@@ -374,7 +416,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
   Widget _summary(RecordingReport r) {
     final d = _device;
     final channels = List.generate(d.channels, (i) => i + 1);
-    final states = {for (final c in channels) c: r.stateOf(c)};
+    final states = {for (final c in channels) c: _state(c)};
     final recording = states.values.where((s) => s == RecState.recording).length;
     final armed = states.values.where((s) => s == RecState.armed).length;
     final off = states.values.where((s) => s == RecState.off).length;
@@ -382,16 +424,16 @@ class _RecordingScreenState extends State<RecordingScreen> {
     RecState main;
     String title;
     String detail;
-    if (r.disks.isEmpty) {
+    if (r.disks != null && r.disks!.isEmpty) {
       main = RecState.problem;
       title = 'No tiene dónde grabar';
       detail = d.isRecorder
           ? 'No se encontró un disco duro instalado en el grabador.'
           : 'Inserta una tarjeta microSD en la cámara (o usa un grabador).';
-    } else if (!r.storageOk) {
+    } else if (r.storageOk == false) {
       main = RecState.problem;
       title = 'El disco no está listo';
-      detail = r.disks.any((x) => x.needsFormat)
+      detail = (r.disks ?? const <StorageDisk>[]).any((x) => x.needsFormat)
           ? 'Hay que formatearlo una vez para que pueda grabar (abajo).'
           : 'El disco o la tarjeta tiene un problema. Revisa que esté bien puesto o cámbialo.';
     } else if (off == channels.length) {
@@ -404,7 +446,9 @@ class _RecordingScreenState extends State<RecordingScreen> {
       final last = r.lastEnd[1];
       detail = d.isRecorder
           ? 'Las ${channels.length} cámaras están guardando video.'
-          : 'Último video guardado: ${_when(last, r.deviceNow)}.';
+          : last == null
+              ? 'La cámara está grabando.'
+              : 'Último video guardado: ${_when(last, r.deviceNow)}.';
     } else if (recording > 0) {
       main = RecState.recording;
       title = 'Grabando $recording de ${channels.length}';
@@ -420,6 +464,16 @@ class _RecordingScreenState extends State<RecordingScreen> {
           'o reinicia el equipo.';
     }
     final style = recStateStyle(main);
+    final extra = <String>[
+      if (_monitor.lastCheck(d) != null) 'Revisado ${_ago(_monitor.lastCheck(d)!)}.',
+      if (_monitor.enforcedAt(d) != null &&
+          DateTime.now().difference(_monitor.enforcedAt(d)!) < const Duration(days: 1))
+        'El equipo había cambiado la grabación y la app la volvió a activar ${_ago(_monitor.enforcedAt(d)!)}.',
+      if (_monitor.gaveUp(d))
+        'El equipo vuelve a cambiar la grabación solo. Revisa en su página web si hay otro programa '
+            'o usuario que la modifique.',
+    ];
+    if (extra.isNotEmpty) detail = '$detail\n\n${extra.join('\n')}';
     return Material(
       color: style.color.withValues(alpha: main == RecState.recording ? 0.14 : 0.10),
       borderRadius: BorderRadius.circular(16),
@@ -446,7 +500,22 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   List<Widget> _storage(RecordingReport r) {
-    if (r.disks.isEmpty) {
+    final disks = r.disks;
+    if (disks == null) {
+      return [
+        _card(
+          child: const ListTile(
+            leading: Icon(Icons.help_outline),
+            title: Text('No se pudo leer el disco ahora'),
+            subtitle: Text(
+              'Se vuelve a revisar solo. Si hay video reciente, el disco está funcionando.',
+              style: TextStyle(color: AppColors.textMuted),
+            ),
+          ),
+        ),
+      ];
+    }
+    if (disks.isEmpty) {
       return [
         _card(
           child: ListTile(
@@ -461,7 +530,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
       ];
     }
     return [
-      for (final disk in r.disks)
+      for (final disk in disks)
         _card(
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -554,12 +623,13 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   Widget _channelRow(RecordingReport r, int ch) {
-    final state = r.stateOf(ch);
+    final state = _state(ch);
     final style = recStateStyle(state);
     final mode = r.modes[ch];
     final parts = [
       mode?.label ?? 'Sin datos',
-      if (mode != null && mode != RecordMode.off) 'último video: ${_when(r.lastEnd[ch], r.deviceNow)}',
+      if (mode != null && mode != RecordMode.off && r.lastEnd.containsKey(ch))
+        'último video: ${_when(r.lastEnd[ch], r.deviceNow)}',
     ];
     return _card(
       child: ListTile(

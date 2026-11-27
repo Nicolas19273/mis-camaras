@@ -16,21 +16,41 @@ void main() {
 
   group('Estado REC', () {
     final now = DateTime(2026, 11, 27, 19);
-    RecState eval(RecordMode? m, {bool disk = true, DateTime? last}) =>
-        evaluateRecording(mode: m, storageOk: disk, lastEnd: last, now: now);
+    RecState eval(RecordMode? m, {bool? disk = true, bool searched = true, DateTime? last, bool grace = false}) =>
+        evaluateRecording(mode: m, storageOk: disk, searched: searched, lastEnd: last, now: now, inGrace: grace);
 
-    test('Grabando si hay video reciente', () {
-      expect(eval(RecordMode.continuous, last: now.subtract(const Duration(minutes: 3))), RecState.recording);
+    test('Grabando si hay video de las últimas horas', () {
+      expect(eval(RecordMode.continuous, last: now.subtract(const Duration(minutes: 70))), RecState.recording);
     });
-    test('Continuo sin video reciente es un problema', () {
-      expect(eval(RecordMode.continuous, last: now.subtract(const Duration(hours: 2))), RecState.problem);
+    test('Solo es problema con pruebas: buscó y no hay nada en horas', () {
+      expect(eval(RecordMode.continuous, last: now.subtract(const Duration(hours: 5))), RecState.problem);
+      expect(eval(RecordMode.continuous), RecState.problem);
     });
-    test('Con movimiento sin video reciente está lista', () {
+    test('Si la búsqueda falló, confía en la configuración', () {
+      expect(eval(RecordMode.continuous, searched: false), RecState.recording);
+      expect(eval(RecordMode.continuous, searched: false, disk: null), RecState.unknown);
+    });
+    test('Recién configurada no es problema', () {
+      expect(eval(RecordMode.continuous, grace: true), RecState.recording);
+    });
+    test('Con movimiento: lista, o REC si hubo video hace poco', () {
       expect(eval(RecordMode.motion), RecState.armed);
+      expect(eval(RecordMode.motion, last: now.subtract(const Duration(minutes: 5))), RecState.recording);
     });
     test('Sin disco es un problema; apagada es apagada', () {
       expect(eval(RecordMode.continuous, disk: false), RecState.problem);
       expect(eval(RecordMode.off, disk: false), RecState.off);
+    });
+    test('Video reciente prueba que el disco funciona aunque no se pudo leer', () {
+      final r = RecordingReport(
+        disks: null,
+        modes: {1: RecordMode.continuous, 2: RecordMode.continuous},
+        lastEnd: {1: now.subtract(const Duration(minutes: 2))},
+        deviceNow: now,
+      );
+      expect(r.storageOk, isTrue);
+      expect(r.stateOf(1), RecState.recording);
+      expect(r.stateOf(2), RecState.recording); // canal 2 sin buscar: confía en la configuración
     });
   });
 

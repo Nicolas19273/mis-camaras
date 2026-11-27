@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'app.dart';
+import 'recording/recording_monitor.dart';
 import 'services/app_store.dart';
 import 'services/update_service.dart';
 
@@ -25,6 +26,9 @@ Future<void> main() async {
   // Carga los equipos guardados antes de mostrar la app.
   final store = AppStore();
   await store.load();
+
+  // Último estado de grabación conocido (para mostrar ● REC de inmediato).
+  await RecordingMonitor.instance.load();
 
   // Prepara el actualizador y recupera una descarga que haya quedado a medias.
   final updates = UpdateService();

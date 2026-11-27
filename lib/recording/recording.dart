@@ -80,50 +80,77 @@ class RecordingReport {
     required this.modes,
     required this.lastEnd,
     required this.deviceNow,
-    required this.tolerance,
   });
 
-  final List<StorageDisk> disks;
+  /// Discos y tarjetas. null = no se pudo leer (no es lo mismo que "no tiene").
+  final List<StorageDisk>? disks;
 
   /// Modo de cada canal (1, 2, 3...).
   final Map<int, RecordMode> modes;
 
-  /// Fin del último video grabado de cada canal (hora del equipo).
+  /// Fin del último video de cada canal (hora del equipo). Solo tiene los
+  /// canales cuya búsqueda respondió bien: si falta, no se pudo buscar.
   final Map<int, DateTime?> lastEnd;
 
   /// Hora actual del equipo.
   final DateTime deviceNow;
 
-  /// Cuánto puede tener el último video para contar como "grabando ahora".
-  final Duration tolerance;
+  /// true = funciona, false = no tiene o falla, null = no se sabe.
+  /// Si hay video reciente, el disco evidentemente funciona.
+  bool? get storageOk {
+    final d = disks;
+    if (d != null && d.any((x) => x.ok)) return true;
+    final recent = deviceNow.subtract(continuousWindow);
+    if (lastEnd.values.any((t) => t != null && !t.isBefore(recent))) return true;
+    return d == null ? null : false;
+  }
 
-  bool get storageOk => disks.any((d) => d.ok);
-
-  RecState stateOf(int channel) => evaluateRecording(
+  /// [inGrace] = recién configurada: todavía puede no haber video nuevo.
+  RecState stateOf(int channel, {bool inGrace = false}) => evaluateRecording(
         mode: modes[channel],
         storageOk: storageOk,
+        searched: lastEnd.containsKey(channel),
         lastEnd: lastEnd[channel],
         now: deviceNow,
-        tolerance: tolerance,
+        inGrace: inGrace,
       );
 }
 
-/// Decide qué mostrar para una cámara.
+/// Con grabación continua, cuánto puede tener el último video guardado sin
+/// que sea raro (los equipos guardan en archivos de hasta 1–2 horas).
+const continuousWindow = Duration(hours: 3);
+
+/// Con movimiento: el "● REC" parpadea si hubo video en estos minutos.
+const motionWindow = Duration(minutes: 15);
+
+/// Decide qué mostrar para una cámara. Solo dice "no está grabando" con
+/// pruebas: sin disco, o sin ningún video en horas teniendo que grabar siempre.
+/// Si algo no se pudo revisar, confía en la configuración del equipo.
 RecState evaluateRecording({
   required RecordMode? mode,
-  required bool storageOk,
+  required bool? storageOk,
+  required bool searched,
   required DateTime? lastEnd,
   required DateTime now,
-  Duration tolerance = const Duration(minutes: 15),
+  bool inGrace = false,
 }) {
   if (mode == RecordMode.off) return RecState.off;
-  if (!storageOk) return mode == null ? RecState.unknown : RecState.problem;
-  if (lastEnd != null && !lastEnd.isBefore(now.subtract(tolerance))) return RecState.recording;
-  return switch (mode) {
-    RecordMode.motion || RecordMode.custom => RecState.armed,
-    RecordMode.continuous => RecState.problem,
-    _ => RecState.unknown,
-  };
+  bool within(Duration d) => lastEnd != null && !lastEnd.isBefore(now.subtract(d));
+
+  if (storageOk == false) return mode == null ? RecState.unknown : RecState.problem;
+  switch (mode) {
+    case RecordMode.continuous:
+      if (within(continuousWindow)) return RecState.recording;
+      if (!searched || inGrace) return storageOk == null && !inGrace ? RecState.unknown : RecState.recording;
+      return RecState.problem;
+    case RecordMode.motion:
+    case RecordMode.custom:
+      return within(motionWindow) ? RecState.recording : RecState.armed;
+    case RecordMode.off:
+      return RecState.off;
+    case null:
+      return within(motionWindow) ? RecState.recording : RecState.unknown;
+  }
 }
 
 // =============================================================================
