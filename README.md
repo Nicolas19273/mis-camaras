@@ -42,6 +42,8 @@ y en *Ajustes*). Toca **Actualizar ahora**:
 - **Buscar en mi red:** encuentra solos los equipos Hikvision y Dahua del WiFi
   (SADP, búsqueda Dahua, ONVIF y rastreo HTTP). Eliges cuáles, escribes la contraseña
   una vez y la app detecta modelo y cantidad de cámaras de cada NVR.
+- **Cambiar la IP del equipo:** en Equipos → editar → *Cambiar IP del equipo*. IP fija o
+  automática (DHCP), revisa que la IP esté libre, pide confirmación y se reconecta sola.
 - **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
   y calidad del mosaico.
 - **Cámaras PTZ:** si una cámara se puede mover, en pantalla completa aparece un
