@@ -72,6 +72,13 @@ y en *Ajustes*). Toca **Actualizar ahora**:
   Grabación). Muestra el disco o la tarjeta SD, permite grabar *Siempre (24/7)*, *Con movimiento*
   o apagarla (todas las cámaras de un toque o una por una), formatea discos nuevos y comprueba
   que haya video guardado de verdad. Sobre cada cámara aparece **● REC** si está grabando.
+- **Por red WiFi:** solo se ven los equipos de la red en la que estás; los de otras redes
+  (otra casa, el trabajo) quedan *en espera* y no se conectan. Cada equipo se asigna solo a la red
+  donde responde (o se elige en el formulario). Los de acceso remoto se ven desde cualquier red.
+- **Sin repetidas:** si una cámara se agregó sola y también se ve dentro del NVR, se oculta en
+  En vivo (se puede quitar de la app o "mostrar igual"). La búsqueda ya no las agrega dos veces.
+- **Chequeo general:** en Equipos (ícono de escudo) revisa de un toque conexión, contraseña, hora,
+  grabación y disco de cada equipo, y corrige la hora si está mal.
 - **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
   y calidad del mosaico.
 - **Cámaras PTZ:** si una cámara se puede mover, en pantalla completa aparece un

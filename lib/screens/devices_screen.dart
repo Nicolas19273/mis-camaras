@@ -7,9 +7,11 @@ import '../recording/recording_monitor.dart';
 import '../services/app_store.dart';
 import '../theme.dart';
 import '../widgets/brand_badge.dart';
+import '../widgets/network_sheet.dart';
 import 'device_form_screen.dart';
 import 'discovery_screen.dart';
 import 'groups_tab.dart';
+import 'health_screen.dart';
 import 'recording_screen.dart';
 
 /// Pestaña "Equipos": agregar, editar, eliminar y ordenar equipos,
@@ -36,7 +38,7 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => RecordingMonitor.instance.refresh(store.devices));
+    WidgetsBinding.instance.addPostFrameCallback((_) => RecordingMonitor.instance.refresh(store.activeDevices));
   }
 
   @override
@@ -118,10 +120,23 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
 
   Widget _card(BuildContext context, Device d, {Key? key}) {
     final channels = d.channels == 1 ? 'Cámara' : 'NVR · ${d.channels} canales';
+    final here = store.isHere(d);
+    final dup = store.duplicateOf(d);
+    final network = d.network == Device.anyNetwork || !d.isLocalHost
+        ? 'Cualquier red'
+        : store.networkById(d.network)?.name;
+    final tags = [
+      if ((network != null && store.networks.length > 1) || !here) network ?? 'Sin red',
+      if (!here) 'en espera',
+      if (dup != null)
+        dup.device.isRecorder ? 'repetida: se ve en "${dup.device.name}"' : 'repetida',
+    ];
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
+      child: Opacity(
+        opacity: here && dup == null ? 1 : 0.55,
+        child: Material(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
@@ -130,7 +145,9 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
           leading: BrandBadge(brand: d.brand, size: 40),
           title: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(
-            '${d.brand.label} · $channels\n${d.host}',
+            '${d.brand.label} · $channels\n${d.host}${tags.isEmpty ? '' : ' · ${tags.join(' · ')}'}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: AppColors.textMuted, height: 1.35),
           ),
           isThreeLine: true,
@@ -147,6 +164,7 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -185,6 +203,13 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
               ],
             ),
             actions: [
+              IconButton(
+                tooltip: 'Chequeo general',
+                icon: const Icon(Icons.health_and_safety_outlined),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => HealthScreen(store: store)),
+                ),
+              ),
               IconButton(
                 tooltip: 'Buscar en mi red',
                 icon: const Icon(Icons.wifi_find),
@@ -282,12 +307,18 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 96),
                       itemCount: devices.length,
                       onReorder: store.moveDevice,
-                      header: const Padding(
-                        padding: EdgeInsets.fromLTRB(8, 0, 8, 10),
-                        child: Text(
-                          'Mantén presionado un equipo y arrástralo para cambiar el orden del mosaico.',
-                          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                        ),
+                      header: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          NetworkBar(store: store),
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(8, 0, 8, 10),
+                            child: Text(
+                              'Mantén presionado un equipo y arrástralo para cambiar el orden del mosaico.',
+                              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            ),
+                          ),
+                        ],
                       ),
                       itemBuilder: (context, index) =>
                           _card(context, devices[index], key: ValueKey(devices[index].id)),

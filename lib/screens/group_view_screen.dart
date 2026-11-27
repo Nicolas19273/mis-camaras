@@ -45,7 +45,10 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
   void _checkRecording() {
     final group = widget.store.groupById(widget.groupId);
     if (!mounted || !_videoActive || group == null) return;
-    final devices = {for (final c in widget.store.camerasOfGroup(group)) c.device.id: c.device};
+    final devices = {
+      for (final c in widget.store.camerasOfGroup(group))
+        if (widget.store.isHere(c.device)) c.device.id: c.device,
+    };
     RecordingMonitor.instance.refresh(devices.values);
   }
 
@@ -118,7 +121,10 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
             body: const Center(child: Text('Este grupo ya no existe.')),
           );
         }
-        final cameras = store.camerasOfGroup(group);
+        final all = store.camerasOfGroup(group);
+        // Las cámaras de otras redes quedan en espera (no se conectan).
+        final cameras = all.where((c) => store.isHere(c.device)).toList();
+        final waiting = all.length - cameras.length;
         final columns = store.gridColumns;
         final quality = store.gridHd ? StreamQuality.main : StreamQuality.sub;
 
@@ -143,7 +149,10 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                       ),
                       Text(
-                        cameras.length == 1 ? '1 cámara' : '${cameras.length} cámaras',
+                        [
+                          cameras.length == 1 ? '1 cámara' : '${cameras.length} cámaras',
+                          if (waiting > 0) '$waiting en espera (otra red)',
+                        ].join(' · '),
                         style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
                       ),
                     ],
@@ -173,8 +182,10 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          'Este grupo todavía no tiene cámaras.',
+                        Text(
+                          waiting > 0
+                              ? 'Las cámaras de este grupo son de otra red y están en espera.'
+                              : 'Este grupo todavía no tiene cámaras.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: AppColors.textMuted),
                         ),

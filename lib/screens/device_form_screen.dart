@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../brands/brand_adapter.dart';
 import '../brands/brands.dart';
 import '../models/device.dart';
+import '../models/network.dart';
 import '../onvif/onvif_client.dart';
 import '../services/app_store.dart';
 import '../theme.dart';
@@ -42,6 +43,10 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
   bool _detecting = false;
   bool _showAdvanced = false;
 
+  /// Red del equipo: id de una red conocida, [Device.anyNetwork], [_hereValue] o null.
+  String? _network;
+  static const _hereValue = '__aqui__';
+
   bool get _isEdit => widget.device != null;
 
   @override
@@ -59,6 +64,32 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
     _rtspMain = TextEditingController(text: d?.rtspMain ?? '');
     _rtspSub = TextEditingController(text: d?.rtspSub ?? '');
     _showAdvanced = (d?.rtspMain ?? '').isNotEmpty;
+    _network = widget.device?.network ??
+        widget.template?.network ??
+        (widget.store.currentNetwork?.id ?? (widget.store.netInfo?.hasNetwork == true ? _hereValue : null));
+  }
+
+  String? get _resolvedNetwork {
+    if (_network == _hereValue) return widget.store.ensureCurrentNetwork()?.id;
+    return _network;
+  }
+
+  /// Opciones de red para el equipo.
+  List<DropdownMenuItem<String?>> _networkItems() {
+    final store = widget.store;
+    final here = store.currentNetwork;
+    final info = store.netInfo;
+    final items = <DropdownMenuItem<String?>>[
+      for (final n in store.networks)
+        DropdownMenuItem(value: n.id, child: Text(n.id == here?.id ? '${n.name} (aquí)' : n.name)),
+      if (here == null && info != null && info.hasNetwork)
+        DropdownMenuItem(value: _hereValue, child: Text('Esta red (${KnownNetwork.defaultName(info)})')),
+      const DropdownMenuItem(value: Device.anyNetwork, child: Text('Cualquier red (acceso remoto)')),
+    ];
+    if (!items.any((i) => i.value == _network)) {
+      items.insert(0, const DropdownMenuItem(value: null, child: Text('Sin asignar (se asigna sola)')));
+    }
+    return items;
   }
 
   @override
@@ -90,6 +121,9 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
       noPtzChannels: base?.noPtzChannels ?? const {},
       rtspMain: path(_rtspMain),
       rtspSub: path(_rtspSub),
+      network: _network == _hereValue ? null : _network,
+      channelHosts: base?.channelHosts ?? const {},
+      keepDuplicate: base?.keepDuplicate ?? false,
     );
   }
 
@@ -152,7 +186,11 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
-    await widget.store.saveDevice(_buildDevice());
+    final device = _buildDevice();
+    final network = _resolvedNetwork;
+    await widget.store.saveDevice(
+      network == null ? device.copyWith(clearNetwork: true) : device.copyWith(network: network),
+    );
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -375,6 +413,16 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
               ),
               keyboardType: TextInputType.number,
               validator: _validateChannels,
+            ),
+            gap,
+            DropdownButtonFormField<String?>(
+              initialValue: _networkItems().any((i) => i.value == _network) ? _network : null,
+              items: _networkItems(),
+              onChanged: (v) => setState(() => _network = v),
+              decoration: fieldDecoration(
+                'Red',
+                helper: 'Solo se ve cuando estás en esa red. "Cualquier red" para acceso desde afuera.',
+              ),
             ),
             const SizedBox(height: 8),
             _advancedSection(),

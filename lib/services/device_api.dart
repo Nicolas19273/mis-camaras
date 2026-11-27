@@ -149,6 +149,24 @@ class DeviceApi {
     return result;
   }
 
+  // --- IP de la cámara de cada canal (grabadores) ------------------------------------
+
+  /// IP de cada cámara conectada al grabador (canal → IP). Sirve para
+  /// detectar cámaras que también se agregaron solas.
+  Future<Map<int, String>> channelAddresses() async {
+    if (!device.isRecorder || _onvif) return const {};
+    try {
+      if (_hik) {
+        final r = await _http.get('/ISAPI/ContentMgmt/InputProxy/channels');
+        return r.statusCode == 200 ? parseHikvisionChannelAddresses(r.body) : const {};
+      }
+      final r = await _http.get('/cgi-bin/configManager.cgi?action=getConfig&name=RemoteDevice');
+      return r.statusCode == 200 ? parseDahuaChannelAddresses(r.body) : const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
   // --- Modelo de la cámara de un canal (para saber si puede girar) -------------------
 
   Future<String?> channelModel(int channel) async {
@@ -251,3 +269,30 @@ bool? isFixedCameraModel(Brand brand, String model) {
 /// Cámara fija con lente motorizado (zoom óptico): modelos con "Z" en el sufijo.
 bool hasMotorizedLens(String model) =>
     RegExp(r'-(Z|ZS|ZE|ZHN|IZS|IZ|VFPS)\b|-I?ZS', caseSensitive: false).hasMatch(model);
+
+/// Hikvision: <InputProxyChannel><id>3</id>...<ipAddress>192.168.1.64</ipAddress>.
+Map<int, String> parseHikvisionChannelAddresses(String xml) {
+  final result = <int, String>{};
+  for (final block in RegExp(r'<InputProxyChannel[\s>][\s\S]*?</InputProxyChannel>').allMatches(xml)) {
+    final text = block.group(0)!;
+    final id = int.tryParse(xmlValue(text, 'id') ?? '');
+    final ip = xmlValue(text, 'ipAddress');
+    if (id != null && ip != null && ip != '0.0.0.0') result[id] = ip;
+  }
+  return result;
+}
+
+/// Dahua: NETCAMERA_INFO_0.Address=192.168.1.108 → canal 1 (salta los desactivados).
+Map<int, String> parseDahuaChannelAddresses(String body) {
+  final result = <int, String>{};
+  final disabled = <int>{};
+  for (final m in RegExp(r'NETCAMERA_INFO_(\d+)\.Enable=false').allMatches(body)) {
+    disabled.add(int.parse(m.group(1)!));
+  }
+  for (final m in RegExp(r'NETCAMERA_INFO_(\d+)\.Address=(.+)').allMatches(body)) {
+    final i = int.parse(m.group(1)!);
+    final ip = m.group(2)!.trim();
+    if (!disabled.contains(i) && ip.isNotEmpty && ip != '0.0.0.0') result[i + 1] = ip;
+  }
+  return result;
+}

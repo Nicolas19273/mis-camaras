@@ -53,7 +53,13 @@ class Device {
     this.noPtzChannels = const {},
     this.rtspMain,
     this.rtspSub,
+    this.network,
+    this.channelHosts = const {},
+    this.keepDuplicate = false,
   });
+
+  /// Valor de [network] para "se ve desde cualquier red" (acceso remoto).
+  static const anyNetwork = '*';
 
   final String id;
   final String name;
@@ -96,6 +102,24 @@ class Device {
   /// Ruta RTSP propia del flujo secundario.
   final String? rtspSub;
 
+  /// Red WiFi a la que pertenece (id de una red conocida).
+  /// null = todavía no se sabe; [anyNetwork] = se ve desde cualquier red.
+  final String? network;
+
+  /// En grabadores: IP de la cámara conectada a cada canal (para detectar
+  /// cámaras agregadas dos veces: sola y dentro del grabador).
+  final Map<int, String> channelHosts;
+
+  /// true = mostrarla aunque también se vea dentro de un grabador.
+  final bool keepDuplicate;
+
+  /// true si la dirección es de una red local (192.168.x.x, 10.x.x.x...).
+  bool get isLocalHost {
+    final p = host.split('.').map((e) => int.tryParse(e) ?? -1).toList();
+    if (p.length != 4 || p.any((x) => x < 0 || x > 255)) return false;
+    return p[0] == 10 || (p[0] == 192 && p[1] == 168) || (p[0] == 172 && p[1] >= 16 && p[1] <= 31);
+  }
+
   bool get isRecorder => channels > 1;
 
   String channelLabel(int channel) {
@@ -119,6 +143,10 @@ class Device {
     Set<int>? noPtzChannels,
     String? rtspMain,
     String? rtspSub,
+    String? network,
+    bool clearNetwork = false,
+    Map<int, String>? channelHosts,
+    bool? keepDuplicate,
   }) {
     return Device(
       id: id,
@@ -136,6 +164,9 @@ class Device {
       noPtzChannels: noPtzChannels ?? this.noPtzChannels,
       rtspMain: rtspMain ?? this.rtspMain,
       rtspSub: rtspSub ?? this.rtspSub,
+      network: clearNetwork ? null : (network ?? this.network),
+      channelHosts: channelHosts ?? this.channelHosts,
+      keepDuplicate: keepDuplicate ?? this.keepDuplicate,
     );
   }
 
@@ -156,6 +187,10 @@ class Device {
         if (noPtzChannels.isNotEmpty) 'noPtz': noPtzChannels.toList()..sort(),
         if (rtspMain != null && rtspMain!.isNotEmpty) 'rtspMain': rtspMain,
         if (rtspSub != null && rtspSub!.isNotEmpty) 'rtspSub': rtspSub,
+        if (network != null) 'network': network,
+        if (channelHosts.isNotEmpty)
+          'channelHosts': {for (final e in channelHosts.entries) '${e.key}': e.value},
+        if (keepDuplicate) 'keepDuplicate': true,
       };
 
   factory Device.fromJson(Map<String, dynamic> json) {
@@ -168,6 +203,15 @@ class Device {
       rawNames.forEach((k, v) {
         final ch = int.tryParse('$k');
         if (ch != null && v is String) names[ch] = v;
+      });
+    }
+
+    final hosts = <int, String>{};
+    final rawHosts = json['channelHosts'];
+    if (rawHosts is Map) {
+      rawHosts.forEach((k, v) {
+        final ch = int.tryParse('$k');
+        if (ch != null && v is String) hosts[ch] = v;
       });
     }
 
@@ -186,6 +230,9 @@ class Device {
       noPtzChannels: intSet(json['noPtz']),
       rtspMain: json['rtspMain'] as String?,
       rtspSub: json['rtspSub'] as String?,
+      network: json['network'] as String?,
+      channelHosts: hosts,
+      keepDuplicate: json['keepDuplicate'] as bool? ?? false,
     );
   }
 }

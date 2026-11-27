@@ -15,6 +15,7 @@ import '../widgets/camera_tile.dart';
 import '../widgets/groups.dart';
 import '../widgets/layout_chip.dart';
 import '../widgets/status_dot.dart';
+import '../widgets/network_sheet.dart';
 import '../widgets/update_sheet.dart';
 import 'camera_view_screen.dart';
 import 'device_form_screen.dart';
@@ -55,7 +56,7 @@ class _LiveScreenState extends State<LiveScreen> {
   }
 
   void _checkRecording() {
-    if (mounted && _videoActive) RecordingMonitor.instance.refresh(widget.store.devices);
+    if (mounted && _videoActive) RecordingMonitor.instance.refresh(widget.store.activeDevices);
   }
 
   @override
@@ -307,6 +308,7 @@ class _LiveScreenState extends State<LiveScreen> {
                       : null,
                   onTap: () => showUpdateSheet(context, widget.updates),
                 ),
+              NetworkBar(store: store),
               if (brands.length > 1)
                 _BrandBar(
                   brands: brands,
@@ -324,7 +326,9 @@ class _LiveScreenState extends State<LiveScreen> {
                   onChanged: store.setGridColumns,
                 ),
               Expanded(
-                child: allCount == 0
+                child: allCount == 0 && store.standbyDevices.isNotEmpty
+                    ? _StandbyState(store: store)
+                    : allCount == 0
                     ? _EmptyState(
                         onAdd: () => _pushPaused(DeviceFormScreen(store: store)),
                         onDiscover: () => _pushPaused(DiscoveryScreen(store: store)),
@@ -697,3 +701,46 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
+
+/// Todos los equipos son de otra red: se explica y se ofrece verlos igual.
+class _StandbyState extends StatelessWidget {
+  const _StandbyState({required this.store});
+
+  final AppStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final here = store.currentNetwork?.name;
+    final info = store.netInfo;
+    final where = info == null || !info.wifi
+        ? 'Estás sin WiFi (con datos móviles).'
+        : here != null
+            ? 'Estás en la red "$here".'
+            : 'Estás en una red donde no tienes equipos.';
+    final n = store.standbyDevices.length;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_find, size: 44, color: AppColors.textMuted),
+            const SizedBox(height: 14),
+            Text(
+              '$where Tus ${n == 1 ? 'equipo está' : '$n equipos están'} en otra red, en espera.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textMuted, height: 1.45),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () => store.setShowAllNetworks(true),
+              icon: const Icon(Icons.visibility_outlined),
+              label: const Text('Ver igual'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

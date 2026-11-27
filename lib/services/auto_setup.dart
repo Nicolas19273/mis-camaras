@@ -8,7 +8,7 @@ import 'camera_http.dart';
 import 'device_api.dart';
 import 'discovery.dart';
 
-enum SetupResult { added, wrongPassword, unreachable, notActivated, unsupported }
+enum SetupResult { added, wrongPassword, unreachable, notActivated, unsupported, inRecorder }
 
 /// Resultado de registrar un equipo encontrado.
 class SetupOutcome {
@@ -33,6 +33,14 @@ class AutoSetup {
     if (brand == null) return const SetupOutcome(SetupResult.unsupported);
     if (!found.activated) return const SetupOutcome(SetupResult.notActivated);
 
+    // Cámara que ya se ve dentro de un grabador agregado: no se repite.
+    if (!found.isRecorder) {
+      final recorder = store.recorderShowing(found.ip);
+      if (recorder != null) {
+        return SetupOutcome(SetupResult.inRecorder, detail: recorder.name);
+      }
+    }
+
     final draft = Device(
       id: AppStore.newId(),
       name: _fallbackName(found),
@@ -42,6 +50,7 @@ class AutoSetup {
       username: username,
       password: password,
       channels: found.channels ?? 1,
+      network: store.ensureCurrentNetwork()?.id,
     );
 
     if (!brand.hasFullApi) return _registerOnvif(draft, found);
@@ -64,11 +73,24 @@ class AutoSetup {
       }
       names.removeWhere((ch, _) => ch < 1 || ch > info.channels);
 
+      // En grabadores: qué cámara hay en cada canal (para no repetirlas).
+      var hosts = <int, String>{};
+      if (info.channels > 1) {
+        final api2 = DeviceApi(draft.copyWith(channels: info.channels));
+        try {
+          hosts = await api2.channelAddresses();
+        } catch (_) {
+        } finally {
+          api2.close();
+        }
+      }
+
       final device = draft.copyWith(
         name: info.name,
         channels: info.channels,
         mac: found.mac,
         channelNames: info.channels > 1 ? names : const {},
+        channelHosts: hosts,
       );
       await store.saveDevice(device);
       return SetupOutcome(SetupResult.added, device: device);

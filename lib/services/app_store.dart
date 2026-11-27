@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/camera_group.dart';
 import '../models/device.dart';
+import '../models/network.dart';
 import '../theme.dart';
 
 /// Guarda y entrega los equipos y las preferencias de la app.
@@ -23,10 +24,20 @@ class AppStore extends ChangeNotifier {
   static const _brandFilterKey = 'brand_filter';
   static const _groupByBrandKey = 'group_by_brand';
   static const _groupsKey = 'camera_groups_v1';
+  static const _networksKey = 'networks_v1';
+  static const _separateKey = 'separate_networks';
 
   final _secure = const FlutterSecureStorage();
   final List<Device> _devices = [];
   final List<CameraGroup> _groups = [];
+  final List<KnownNetwork> _networks = [];
+
+  NetInfo? _net;
+  KnownNetwork? _here;
+  bool _separate = true;
+  bool _showAll = false;
+  bool _probed = false;
+  Set<String> _reachable = {};
   SharedPreferences? _prefs;
 
   int _gridColumns = 2;
@@ -62,7 +73,7 @@ class AppStore extends ChangeNotifier {
 
   /// Marcas que hay entre los equipos guardados, en orden fijo.
   List<Brand> get brands {
-    final present = _devices.map((d) => d.brand).toSet();
+    final present = cameras.map((c) => c.device.brand).toSet();
     return Brand.values.where(present.contains).toList();
   }
 
@@ -79,12 +90,190 @@ class AppStore extends ChangeNotifier {
     return cameras;
   }
 
-  /// Todas las cámaras a mostrar (cada canal visible de cada equipo).
+  /// Cámaras a mostrar en En vivo: las de la red actual, sin las ocultas
+  /// y sin las repetidas (cámaras que ya se ven dentro de un grabador).
   List<CameraRef> get cameras => [
         for (final d in _devices)
-          for (var ch = 1; ch <= d.channels; ch++)
-            if (!d.hiddenChannels.contains(ch)) CameraRef(d, ch),
+          if (isHere(d) && duplicateOf(d) == null)
+            for (var ch = 1; ch <= d.channels; ch++)
+              if (!d.hiddenChannels.contains(ch)) CameraRef(d, ch),
       ];
+
+  // --- Redes ---------------------------------------------------------------------
+
+  List<KnownNetwork> get networks => List.unmodifiable(_networks);
+
+  /// Red a la que está conectado el teléfono (null = no se sabe todavía).
+  NetInfo? get netInfo => _net;
+
+  /// Red conocida en la que está el teléfono (null = otra red o datos móviles).
+  KnownNetwork? get currentNetwork => _here;
+
+  /// Mostrar solo los equipos de la red actual.
+  bool get separateNetworks => _separate;
+
+  /// Mostrar por ahora también los equipos de otras redes.
+  bool get showAllNetworks => _showAll;
+
+  /// true cuando ya se probó qué equipos responden en esta red.
+  bool get probed => _probed;
+
+  KnownNetwork? networkById(String? id) {
+    for (final n in _networks) {
+      if (n.id == id) return n;
+    }
+    return null;
+  }
+
+  /// ¿Este equipo es de la red actual? Los de otras redes quedan "en espera":
+  /// no se muestran ni se conectan, para no confundir.
+  bool isHere(Device d) {
+    if (!_separate || _showAll || _net == null) return true;
+    final n = d.network;
+    if (n == Device.anyNetwork || !d.isLocalHost) return true;
+    if (n == null) return !_probed || _reachable.contains(d.id);
+    return _here != null && n == _here!.id;
+  }
+
+  /// Equipos de la red actual.
+  List<Device> get activeDevices => _devices.where(isHere).toList();
+
+  /// Equipos de otras redes (en espera).
+  List<Device> get standbyDevices => _devices.where((d) => !isHere(d)).toList();
+
+  /// Actualiza la red actual. Devuelve true si cambió.
+  bool updateNetInfo(NetInfo info) {
+    final before = '${_here?.id}|${_net?.wifi}|${_net?.subnet}';
+    _net = info;
+    var match = matchNetwork(_networks, info);
+    if (match != null) {
+      final completed = match.adopt(info);
+      if (completed.ssid != match.ssid || completed.gateway != match.gateway || completed.name != match.name) {
+        _networks[_networks.indexWhere((n) => n.id == match!.id)] = completed;
+        match = completed;
+        _persistNetworks();
+      }
+    }
+    _here = match;
+    final changed = before != '${_here?.id}|${info.wifi}|${info.subnet}';
+    if (changed) {
+      _probed = false;
+      notifyListeners();
+    }
+    return changed;
+  }
+
+  /// La red actual como red conocida (la crea si es nueva).
+  KnownNetwork? ensureCurrentNetwork() {
+    final here = _here;
+    if (here != null) return here;
+    final info = _net;
+    if (info == null || !info.hasNetwork) return null;
+    final n = KnownNetwork(
+      id: newId(),
+      name: KnownNetwork.defaultName(info),
+      subnet: info.subnet!,
+      ssid: info.ssid,
+      gateway: info.gateway,
+    );
+    _networks.add(n);
+    _here = n;
+    _persistNetworks();
+    notifyListeners();
+    return n;
+  }
+
+  /// Equipos que respondieron en esta red (los que todavía no tenían red).
+  void setProbed(Set<String> reachable) {
+    _probed = true;
+    _reachable = reachable;
+    notifyListeners();
+  }
+
+  Future<void> assignNetwork(Iterable<String> deviceIds, String? networkId) async {
+    final ids = deviceIds.toSet();
+    for (var i = 0; i < _devices.length; i++) {
+      if (!ids.contains(_devices[i].id)) continue;
+      _devices[i] = networkId == null
+          ? _devices[i].copyWith(clearNetwork: true)
+          : _devices[i].copyWith(network: networkId);
+    }
+    notifyListeners();
+    await _persistDevices();
+  }
+
+  Future<void> renameNetwork(String id, String name) async {
+    final i = _networks.indexWhere((n) => n.id == id);
+    if (i < 0 || name.trim().isEmpty) return;
+    _networks[i] = _networks[i].copyWith(name: name.trim());
+    if (_here?.id == id) _here = _networks[i];
+    notifyListeners();
+    await _persistNetworks();
+  }
+
+  /// Olvida una red: sus equipos vuelven a "sin red" hasta que respondan en alguna.
+  Future<void> forgetNetwork(String id) async {
+    _networks.removeWhere((n) => n.id == id);
+    if (_here?.id == id) _here = null;
+    for (var i = 0; i < _devices.length; i++) {
+      if (_devices[i].network == id) _devices[i] = _devices[i].copyWith(clearNetwork: true);
+    }
+    _probed = false;
+    notifyListeners();
+    await _persistNetworks();
+    await _persistDevices();
+  }
+
+  void setShowAllNetworks(bool value) {
+    _showAll = value;
+    notifyListeners();
+  }
+
+  Future<void> setSeparateNetworks(bool value) async {
+    _separate = value;
+    notifyListeners();
+    await (await _p()).setBool(_separateKey, value);
+  }
+
+  // --- Cámaras repetidas ------------------------------------------------------------
+
+  /// Si [d] es una cámara que ya se ve dentro de un grabador (o el mismo
+  /// equipo agregado dos veces), devuelve dónde se ve.
+  ({Device device, int channel})? duplicateOf(Device d) => findDuplicate(_devices, d);
+
+  /// Grabador de la red actual que ya muestra la cámara con esa IP.
+  Device? recorderShowing(String ip) {
+    for (final r in _devices) {
+      if (r.isRecorder && isHere(r) && r.channelHosts.values.contains(ip)) return r;
+    }
+    return null;
+  }
+
+  /// Cámaras repetidas (ocultas en En vivo).
+  List<Device> get duplicates => _devices.where((d) => duplicateOf(d) != null).toList();
+
+  /// Borra las cámaras repetidas. Si tenían un nombre propio y el canal del
+  /// grabador no, el nombre pasa al grabador.
+  Future<int> removeDuplicates() async {
+    final dups = duplicates;
+    for (final d in dups) {
+      final where = duplicateOf(d);
+      if (where != null && where.device.isRecorder) {
+        final r = deviceById(where.device.id)!;
+        final current = r.channelNames[where.channel]?.trim() ?? '';
+        if (current.isEmpty && d.name.trim().isNotEmpty) {
+          await saveDevice(r.copyWith(channelNames: {...r.channelNames, where.channel: d.name.trim()}));
+        }
+      }
+      await deleteDevice(d.id);
+    }
+    return dups.length;
+  }
+
+  Future<void> setKeepDuplicate(Device d, bool keep) async {
+    final current = deviceById(d.id);
+    if (current != null) await saveDevice(current.copyWith(keepDuplicate: keep));
+  }
 
   /// Todas las cámaras de todos los equipos, incluidas las ocultas del mosaico.
   List<CameraRef> get allCameras => [
@@ -158,6 +347,17 @@ class AppStore extends ChangeNotifier {
     _gridHd = prefs.getBool(_gridHdKey) ?? false;
     _autoUpdate = prefs.getBool(_autoUpdateKey) ?? true;
     _groupByBrand = prefs.getBool(_groupByBrandKey) ?? false;
+    _separate = prefs.getBool(_separateKey) ?? true;
+    final rawNetworks = prefs.getString(_networksKey);
+    if (rawNetworks != null) {
+      try {
+        for (final item in jsonDecode(rawNetworks) as List<dynamic>) {
+          _networks.add(KnownNetwork.fromJson(item as Map<String, dynamic>));
+        }
+      } catch (e) {
+        debugPrint('No se pudieron leer las redes guardadas: $e');
+      }
+    }
     final filter = prefs.getString(_brandFilterKey);
     _brandFilter = null;
     for (final b in Brand.values) {
@@ -314,6 +514,11 @@ class AppStore extends ChangeNotifier {
     await (await _p()).setString(_devicesKey, data);
   }
 
+  Future<void> _persistNetworks() async {
+    final data = jsonEncode(_networks.map((n) => n.toJson()).toList());
+    await (await _p()).setString(_networksKey, data);
+  }
+
   Future<void> _persistGroups() async {
     final data = jsonEncode(_groups.map((g) => g.toJson()).toList());
     await (await _p()).setString(_groupsKey, data);
@@ -330,3 +535,25 @@ class AppStore extends ChangeNotifier {
 
   String _passKey(String id) => 'pass_$id';
 }
+
+/// Si [d] es una cámara que ya se ve dentro de un grabador de [devices]
+/// (o el mismo equipo agregado dos veces), devuelve dónde se ve.
+({Device device, int channel})? findDuplicate(List<Device> devices, Device d) {
+  if (d.keepDuplicate || d.isRecorder) return null;
+  bool sameNetwork(Device a, Device b) => a.network == null || b.network == null || a.network == b.network;
+  final index = devices.indexWhere((x) => x.id == d.id);
+  for (var i = 0; i < devices.length; i++) {
+    final r = devices[i];
+    if (r.id == d.id || !sameNetwork(r, d)) continue;
+    if (r.isRecorder) {
+      if (r.host == d.host) return (device: r, channel: 1);
+      for (final e in r.channelHosts.entries) {
+        if (e.value == d.host && e.key <= r.channels) return (device: r, channel: e.key);
+      }
+    } else if (r.host == d.host && r.httpPort == d.httpPort && i < index) {
+      return (device: r, channel: 1);
+    }
+  }
+  return null;
+}
+

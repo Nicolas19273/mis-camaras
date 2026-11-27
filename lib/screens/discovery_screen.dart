@@ -39,9 +39,14 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     super.dispose();
   }
 
-  bool _isAdded(FoundDevice d) => widget.store.devices.any((x) => x.host == d.ip);
+  bool _isAdded(FoundDevice d) =>
+      widget.store.devices.any((x) => x.host == d.ip && widget.store.isHere(x));
 
-  bool _canAdd(FoundDevice d) => d.brand != null && d.activated && !_isAdded(d);
+  /// Grabador ya agregado que muestra esta cámara (para no verla repetida).
+  Device? _inRecorder(FoundDevice d) => d.isRecorder ? null : widget.store.recorderShowing(d.ip);
+
+  bool _canAdd(FoundDevice d) =>
+      d.brand != null && d.activated && !_isAdded(d) && _inRecorder(d) == null;
 
   Future<void> _scan() async {
     setState(() {
@@ -154,6 +159,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                       return _FoundTile(
                         device: d,
                         added: _isAdded(d),
+                        inRecorder: _inRecorder(d)?.name,
                         selected: _selected.contains(d.ip),
                         onToggle: _canAdd(d)
                             ? () => setState(() {
@@ -225,6 +231,7 @@ class _FoundTile extends StatelessWidget {
   const _FoundTile({
     required this.device,
     required this.added,
+    this.inRecorder,
     required this.selected,
     required this.onToggle,
     required this.onOpen,
@@ -232,6 +239,9 @@ class _FoundTile extends StatelessWidget {
 
   final FoundDevice device;
   final bool added;
+
+  /// Nombre del grabador que ya muestra esta cámara.
+  final String? inRecorder;
   final bool selected;
   final VoidCallback? onToggle;
   final VoidCallback? onOpen;
@@ -246,6 +256,8 @@ class _FoundTile extends StatelessWidget {
     Color badgeColor = AppColors.textMuted;
     if (added) {
       badge = 'Ya agregado';
+    } else if (inRecorder != null) {
+      badge = 'Ya se ve dentro de "$inRecorder"';
     } else if (!d.activated) {
       badge = 'Sin activar';
       badgeColor = AppColors.connecting;
@@ -480,8 +492,13 @@ class _SetupProgressSheetState extends State<_SetupProgressSheet> {
 
   Future<void> _run() async {
     final setup = AutoSetup(widget.store);
-    // De a uno, para no saturar la red ni los equipos.
-    for (final d in widget.targets) {
+    // Primero los grabadores: así las cámaras que ya se ven dentro de ellos
+    // no se agregan repetidas. De a uno, para no saturar la red.
+    final ordered = [
+      ...widget.targets.where((d) => d.isRecorder),
+      ...widget.targets.where((d) => !d.isRecorder),
+    ];
+    for (final d in ordered) {
       final outcome = await setup.register(d, widget.username, widget.password);
       if (!mounted) return;
       setState(() => _results[d.ip] = outcome);
@@ -546,6 +563,9 @@ class _SetupProgressSheetState extends State<_SetupProgressSheet> {
       case SetupResult.unsupported:
         icon = const Icon(Icons.block, color: AppColors.textMuted, size: 20);
         text = 'Marca no compatible';
+      case SetupResult.inRecorder:
+        icon = const Icon(Icons.check_circle_outline, color: AppColors.textMuted, size: 20);
+        text = 'No se agregó: ya se ve dentro de "${outcome!.detail}"';
       case SetupResult.unreachable:
         icon = const Icon(Icons.error_outline, color: AppColors.offline, size: 20);
         text = 'No respondió. Revisa que esté encendido.';

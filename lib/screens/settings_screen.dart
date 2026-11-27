@@ -4,7 +4,9 @@ import '../config.dart';
 import '../services/app_store.dart';
 import '../services/update_service.dart';
 import '../theme.dart';
+import '../widgets/network_sheet.dart';
 import '../widgets/update_sheet.dart';
+import 'health_screen.dart';
 
 /// Pestaña "Ajustes": actualizaciones, apariencia y video.
 class SettingsScreen extends StatelessWidget {
@@ -155,6 +157,47 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     value: store.groupByBrand,
                     onChanged: store.setGroupByBrand,
+                  ),
+                ],
+              ),
+
+              // --- Redes y chequeo --------------------------------------------
+              const SectionLabel('Redes'),
+              _Group(
+                children: [
+                  SwitchListTile(
+                    secondary: const Icon(Icons.wifi),
+                    title: const Text('Solo equipos de la red actual'),
+                    subtitle: const Text(
+                      'Los de otras redes (otra casa, el trabajo) quedan en espera para no confundirse.',
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                    value: store.separateNetworks,
+                    onChanged: store.setSeparateNetworks,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.router_outlined),
+                    title: const Text('Redes, en espera y repetidas'),
+                    subtitle: Text(
+                      store.currentNetwork != null
+                          ? 'Estás en "${store.currentNetwork!.name}"'
+                          : 'Ver redes guardadas',
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => showNetworkSheet(context, store),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.health_and_safety_outlined),
+                    title: const Text('Chequeo general'),
+                    subtitle: const Text(
+                      'Revisa de un toque conexión, contraseña, grabación, disco y hora de todos tus equipos.',
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => HealthScreen(store: store)),
+                    ),
                   ),
                 ],
               ),
