@@ -31,7 +31,7 @@ y en *Ajustes*). Toca **Actualizar ahora**:
 
 ---
 
-## Qué hace la versión 0.3
+## Qué hace la versión 0.4
 
 - **En vivo:** mosaico estilo NVR con vistas de **1, 4, 9 o 16** cámaras, estado
   de cada cámara (en vivo, conectando, sin conexión) y botón para **reconectar todas**.
@@ -39,6 +39,9 @@ y en *Ajustes*). Toca **Actualizar ahora**:
 - **Pantalla completa** por cámara: desliza para pasar a la siguiente, zoom con los
   dedos, HD/SD, sonido, reloj y etiqueta *EN VIVO*.
 - **Equipos:** agregar, editar, eliminar y **ordenar** (mantén presionado y arrastra).
+- **Buscar en mi red:** encuentra solos los equipos Hikvision y Dahua del WiFi
+  (SADP, búsqueda Dahua, ONVIF y rastreo HTTP). Eliges cuáles, escribes la contraseña
+  una vez y la app detecta modelo y cantidad de cámaras de cada NVR.
 - **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
   y calidad del mosaico.
 - **Cámaras PTZ:** si una cámara se puede mover, en pantalla completa aparece un
@@ -89,13 +92,16 @@ lib/
 │   └── brands.dart           Elige el adaptador según la marca
 ├── services/
 │   ├── app_store.dart        Guarda equipos y preferencias en el teléfono
+│   ├── discovery.dart        Busca equipos en el WiFi (SADP, Dahua, ONVIF, HTTP)
+│   ├── auto_setup.dart       Registra equipos encontrados (modelo y canales)
+│   ├── camera_http.dart      Conexión con la API de cada equipo (Digest)
 │   ├── update_service.dart   Busca, descarga e instala actualizaciones
 │   └── camera_status.dart    Cuenta cámaras en vivo / sin conexión
 ├── screens/                  En vivo, mosaico, pantalla completa, equipos, ajustes
 └── widgets/                  Reproductor RTSP, cuadros del mosaico, reloj, etc.
 
 test/                         Pruebas (direcciones RTSP y actualizaciones)
-branding/                     Ícono de la app
+branding/                     Ícono y actividad Android (permiso de búsqueda)
 .github/workflows/            Compilación automática del APK
 ```
 

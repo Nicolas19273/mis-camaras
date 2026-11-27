@@ -5,6 +5,7 @@ import '../services/app_store.dart';
 import '../theme.dart';
 import '../widgets/brand_badge.dart';
 import 'device_form_screen.dart';
+import 'discovery_screen.dart';
 
 /// Pestaña "Equipos": agregar, editar, eliminar y ordenar.
 class DevicesScreen extends StatelessWidget {
@@ -17,6 +18,12 @@ class DevicesScreen extends StatelessWidget {
       MaterialPageRoute<void>(
         builder: (_) => DeviceFormScreen(store: store, device: device),
       ),
+    );
+  }
+
+  Future<void> _discover(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => DiscoveryScreen(store: store)),
     );
   }
 
@@ -77,6 +84,14 @@ class DevicesScreen extends StatelessWidget {
                 ),
               ],
             ),
+            actions: [
+              IconButton(
+                tooltip: 'Buscar en mi red',
+                icon: const Icon(Icons.wifi_find),
+                onPressed: () => _discover(context),
+              ),
+              const SizedBox(width: 4),
+            ],
           ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _edit(context),
@@ -84,13 +99,25 @@ class DevicesScreen extends StatelessWidget {
             label: const Text('Agregar'),
           ),
           body: devices.isEmpty
-              ? const Center(
+              ? Center(
                   child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Text(
-                      'Toca "Agregar" para sumar tu primera cámara o NVR.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textMuted),
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Busca automáticamente las cámaras de tu WiFi, o toca "Agregar" '
+                          'para sumar una a mano.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textMuted, height: 1.45),
+                        ),
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          onPressed: () => _discover(context),
+                          icon: const Icon(Icons.wifi_find),
+                          label: const Text('Buscar en mi red'),
+                        ),
+                      ],
                     ),
                   ),
                 )

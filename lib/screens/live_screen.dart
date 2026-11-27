@@ -13,6 +13,7 @@ import '../widgets/status_dot.dart';
 import '../widgets/update_sheet.dart';
 import 'camera_view_screen.dart';
 import 'device_form_screen.dart';
+import 'discovery_screen.dart';
 import 'mosaic_screen.dart';
 
 /// Pestaña "En vivo": mosaico de cámaras al estilo NVR.
@@ -160,6 +161,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 child: cameras.isEmpty
                     ? _EmptyState(
                         onAdd: () => _pushPaused(DeviceFormScreen(store: store)),
+                        onDiscover: () => _pushPaused(DiscoveryScreen(store: store)),
                       )
                     : GridView.builder(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -347,9 +349,10 @@ class _UpdateBanner extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onAdd});
+  const _EmptyState({required this.onAdd, required this.onDiscover});
 
   final VoidCallback onAdd;
+  final VoidCallback onDiscover;
 
   @override
   Widget build(BuildContext context) {
@@ -381,9 +384,15 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
+              onPressed: onDiscover,
+              icon: const Icon(Icons.wifi_find),
+              label: const Text('Buscar en mi red'),
+            ),
+            const SizedBox(height: 10),
+            TextButton.icon(
               onPressed: onAdd,
               icon: const Icon(Icons.add),
-              label: const Text('Agregar equipo'),
+              label: const Text('Agregar a mano'),
             ),
           ],
         ),

@@ -9,12 +9,15 @@ import '../widgets/live_video.dart';
 
 /// Formulario para agregar o editar un equipo.
 class DeviceFormScreen extends StatefulWidget {
-  const DeviceFormScreen({super.key, required this.store, this.device});
+  const DeviceFormScreen({super.key, required this.store, this.device, this.template});
 
   final AppStore store;
 
   /// null = equipo nuevo.
   final Device? device;
+
+  /// Datos para rellenar un equipo nuevo (por ejemplo, encontrado en la red).
+  final Device? template;
 
   @override
   State<DeviceFormScreen> createState() => _DeviceFormScreenState();
@@ -38,7 +41,7 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
   @override
   void initState() {
     super.initState();
-    final d = widget.device;
+    final d = widget.device ?? widget.template;
     _brand = d?.brand ?? Brand.hikvision;
     _name = TextEditingController(text: d?.name ?? '');
     _host = TextEditingController(text: d?.host ?? '');

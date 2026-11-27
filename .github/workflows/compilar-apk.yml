@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION_BASE: '0.3'
+  VERSION_BASE: '0.4'
 
 jobs:
   apk:
@@ -61,9 +61,9 @@ jobs:
           flutter pub add media_kit media_kit_video media_kit_libs_video \
             shared_preferences flutter_secure_storage http open_filex crypto background_downloader
 
-          # Permisos: internet (cámaras y GitHub) e instalar actualizaciones.
+          # Permisos: internet, instalar actualizaciones, notificaciones y búsqueda en el WiFi.
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application|' "$MANIFEST"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n    <application|' "$MANIFEST"
           sed -i 's|android:label="mis_camaras"|android:label="Mis Cámaras"|' "$MANIFEST"
           # Permite hablar por HTTP con las cámaras de la red local (PTZ y configuración).
           sed -i 's|<application|<application android:usesCleartextTraffic="true"|' "$MANIFEST"
@@ -79,6 +79,12 @@ jobs:
             echo "Kotlin actualizado a 2.1.20"
           fi
           grep -n "kotlin" "$SETTINGS" || true
+
+          # Actividad principal con el permiso de búsqueda en la red (MulticastLock).
+          MAIN_ACTIVITY=$(find android/app/src/main -name 'MainActivity.kt' | head -n1)
+          echo "MainActivity: $MAIN_ACTIVITY"
+          head -n1 "$MAIN_ACTIVITY"
+          cp ../branding/android/MainActivity.kt "$MAIN_ACTIVITY"
 
           # Ícono propio de la app.
           rm -rf android/app/src/main/res/mipmap-anydpi-v26
