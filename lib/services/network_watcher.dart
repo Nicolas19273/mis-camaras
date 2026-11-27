@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../models/device.dart';
 import '../models/network.dart';
 import 'app_store.dart';
 import 'device_api.dart';
