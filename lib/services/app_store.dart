@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/camera_group.dart';
 import '../models/device.dart';
 import '../theme.dart';
 
@@ -21,9 +22,11 @@ class AppStore extends ChangeNotifier {
   static const _autoUpdateKey = 'auto_update';
   static const _brandFilterKey = 'brand_filter';
   static const _groupByBrandKey = 'group_by_brand';
+  static const _groupsKey = 'camera_groups_v1';
 
   final _secure = const FlutterSecureStorage();
   final List<Device> _devices = [];
+  final List<CameraGroup> _groups = [];
   SharedPreferences? _prefs;
 
   int _gridColumns = 2;
@@ -83,6 +86,63 @@ class AppStore extends ChangeNotifier {
             if (!d.hiddenChannels.contains(ch)) CameraRef(d, ch),
       ];
 
+  /// Todas las cámaras de todos los equipos, incluidas las ocultas del mosaico.
+  List<CameraRef> get allCameras => [
+        for (final d in _devices)
+          for (var ch = 1; ch <= d.channels; ch++) CameraRef(d, ch),
+      ];
+
+  // --- Grupos ----------------------------------------------------------------
+
+  /// Grupos armados por la persona, en su orden.
+  List<CameraGroup> get groups => List.unmodifiable(_groups);
+
+  /// Cámaras de un grupo (las que todavía existen), en el orden del grupo.
+  List<CameraRef> camerasOfGroup(CameraGroup group) => group.resolve(_devices);
+
+  CameraGroup? groupById(String id) {
+    for (final g in _groups) {
+      if (g.id == id) return g;
+    }
+    return null;
+  }
+
+  /// Crea un grupo nuevo o actualiza uno existente (mismo id).
+  Future<void> saveGroup(CameraGroup group) async {
+    final index = _groups.indexWhere((g) => g.id == group.id);
+    if (index >= 0) {
+      _groups[index] = group;
+    } else {
+      _groups.add(group);
+    }
+    notifyListeners();
+    await _persistGroups();
+  }
+
+  Future<void> deleteGroup(String id) async {
+    _groups.removeWhere((g) => g.id == id);
+    notifyListeners();
+    await _persistGroups();
+  }
+
+  Future<void> moveGroup(int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex -= 1;
+    final g = _groups.removeAt(oldIndex);
+    _groups.insert(newIndex, g);
+    notifyListeners();
+    await _persistGroups();
+  }
+
+  /// Agrega o saca una cámara de un grupo.
+  Future<void> setInGroup(String groupId, CameraRef camera, bool inGroup) async {
+    final group = groupById(groupId);
+    if (group == null) return;
+    final key = CameraGroup.keyOfCamera(camera);
+    final members = [...group.members]..remove(key);
+    if (inGroup) members.add(key);
+    await saveGroup(group.copyWith(members: members));
+  }
+
   Device? deviceById(String id) {
     for (final d in _devices) {
       if (d.id == id) return d;
@@ -102,6 +162,17 @@ class AppStore extends ChangeNotifier {
     _brandFilter = null;
     for (final b in Brand.values) {
       if (b.name == filter) _brandFilter = b;
+    }
+
+    final rawGroups = prefs.getString(_groupsKey);
+    if (rawGroups != null) {
+      try {
+        for (final item in jsonDecode(rawGroups) as List<dynamic>) {
+          _groups.add(CameraGroup.fromJson(item as Map<String, dynamic>));
+        }
+      } catch (e) {
+        debugPrint('No se pudieron leer los grupos guardados: $e');
+      }
     }
 
     final raw = prefs.getString(_devicesKey);
@@ -137,9 +208,19 @@ class AppStore extends ChangeNotifier {
 
   Future<void> deleteDevice(String id) async {
     _devices.removeWhere((d) => d.id == id);
+    // Sus cámaras también salen de los grupos.
+    var groupsChanged = false;
+    for (var i = 0; i < _groups.length; i++) {
+      final cleaned = _groups[i].withoutDevice(id);
+      if (cleaned.members.length != _groups[i].members.length) {
+        _groups[i] = cleaned;
+        groupsChanged = true;
+      }
+    }
     notifyListeners();
     await _secure.delete(key: _passKey(id));
     await _persistDevices();
+    if (groupsChanged) await _persistGroups();
   }
 
   /// Cambia el orden de los equipos (arrastrar en la lista de Equipos).
@@ -231,6 +312,11 @@ class AppStore extends ChangeNotifier {
   Future<void> _persistDevices() async {
     final data = jsonEncode(_devices.map((d) => d.toJson()).toList());
     await (await _p()).setString(_devicesKey, data);
+  }
+
+  Future<void> _persistGroups() async {
+    final data = jsonEncode(_groups.map((g) => g.toJson()).toList());
+    await (await _p()).setString(_groupsKey, data);
   }
 
   Future<String> _readPassword(String id) async {

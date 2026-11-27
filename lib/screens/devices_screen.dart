@@ -6,12 +6,34 @@ import '../theme.dart';
 import '../widgets/brand_badge.dart';
 import 'device_form_screen.dart';
 import 'discovery_screen.dart';
+import 'groups_tab.dart';
 
-/// Pestaña "Equipos": agregar, editar, eliminar y ordenar.
-class DevicesScreen extends StatelessWidget {
+/// Pestaña "Equipos": agregar, editar, eliminar y ordenar equipos,
+/// y armar grupos de cámaras (pestaña interna "Grupos").
+class DevicesScreen extends StatefulWidget {
   const DevicesScreen({super.key, required this.store});
 
   final AppStore store;
+
+  @override
+  State<DevicesScreen> createState() => _DevicesScreenState();
+}
+
+class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(length: 2, vsync: this)
+    ..addListener(() {
+      if (mounted) setState(() {});
+    });
+
+  AppStore get store => widget.store;
+
+  bool get _onGroups => _tabs.index == 1;
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
 
   Future<void> _edit(BuildContext context, [Device? device]) async {
     await Navigator.of(context).push(
@@ -88,6 +110,7 @@ class DevicesScreen extends StatelessWidget {
       builder: (context, child) {
         final devices = store.devices;
         final totalCameras = store.cameras.length;
+        final groupCount = store.groups.length;
 
         return Scaffold(
           appBar: AppBar(
@@ -121,13 +144,35 @@ class DevicesScreen extends StatelessWidget {
               ),
               const SizedBox(width: 4),
             ],
+            bottom: TabBar(
+              controller: _tabs,
+              tabs: [
+                Tab(text: devices.isEmpty ? 'Equipos' : 'Equipos · ${devices.length}'),
+                Tab(text: groupCount == 0 ? 'Grupos' : 'Grupos · $groupCount'),
+              ],
+            ),
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _edit(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Agregar'),
+          floatingActionButton: (_onGroups && store.allCameras.isEmpty)
+              ? null
+              : FloatingActionButton.extended(
+                  onPressed: () => _onGroups ? GroupsTab.create(context, store) : _edit(context),
+                  icon: Icon(_onGroups ? Icons.create_new_folder_outlined : Icons.add),
+                  label: Text(_onGroups ? 'Nuevo grupo' : 'Agregar'),
+                ),
+          body: TabBarView(
+            controller: _tabs,
+            children: [
+              _devicesBody(context, devices),
+              GroupsTab(store: store),
+            ],
           ),
-          body: devices.isEmpty
+        );
+      },
+    );
+  }
+
+  Widget _devicesBody(BuildContext context, List<Device> devices) {
+    return devices.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
@@ -152,7 +197,7 @@ class DevicesScreen extends StatelessWidget {
                 )
               : (store.groupByBrand && store.brands.length > 1)
                   ? ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 96),
                       children: [
                         for (final brand in store.brands) ...[
                           Padding(
@@ -186,7 +231,7 @@ class DevicesScreen extends StatelessWidget {
                       ],
                     )
                   : ReorderableListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 96),
                       itemCount: devices.length,
                       onReorder: store.moveDevice,
                       header: const Padding(
@@ -198,9 +243,6 @@ class DevicesScreen extends StatelessWidget {
                       ),
                       itemBuilder: (context, index) =>
                           _card(context, devices[index], key: ValueKey(devices[index].id)),
-                    ),
-        );
-      },
-    );
+                    );
   }
 }

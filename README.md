@@ -65,6 +65,9 @@ y en *Ajustes*). Toca **Actualizar ahora**:
 - **Mosaico:** mantén presionada una cámara para renombrarla u ocultarla.
 - **Por marca:** en En vivo elige *Todas · Hikvision · Dahua* y, con el botón de secciones,
   míralas separadas por marca o todas juntas (también en Ajustes). Equipos sigue el mismo orden.
+- **Grupos:** en Equipos → Grupos crea grupos propios (ej. *Patio*, *Local*) marcando
+  varias cámaras a la vez, de cualquier equipo o marca. Toca un grupo para verlo en vivo.
+  También desde En vivo: mantén presionada una cámara → *Agregar a un grupo*.
 - **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
   y calidad del mosaico.
 - **Cámaras PTZ:** si una cámara se puede mover, en pantalla completa aparece un

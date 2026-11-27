@@ -8,12 +8,14 @@ import '../services/update_service.dart';
 import '../theme.dart';
 import '../widgets/brand_badge.dart';
 import '../widgets/camera_tile.dart';
+import '../widgets/groups.dart';
 import '../widgets/layout_chip.dart';
 import '../widgets/status_dot.dart';
 import '../widgets/update_sheet.dart';
 import 'camera_view_screen.dart';
 import 'device_form_screen.dart';
 import 'discovery_screen.dart';
+import 'group_editor_screen.dart';
 import 'mosaic_screen.dart';
 
 /// Pestaña "En vivo": mosaico de cámaras al estilo NVR.
@@ -98,6 +100,17 @@ class _LiveScreenState extends State<LiveScreen> {
               onTap: () {
                 Navigator.of(ctx).pop();
                 _rename(camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.create_new_folder_outlined),
+              title: const Text('Agregar a un grupo'),
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                final createNew = await showAddToGroupSheet(context, widget.store, camera);
+                if (createNew && mounted) {
+                  _pushPaused(GroupEditorScreen(store: widget.store, preselected: [camera]));
+                }
               },
             ),
             ListTile(
