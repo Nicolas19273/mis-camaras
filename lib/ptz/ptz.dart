@@ -152,7 +152,7 @@ class HikvisionPtz extends PtzDriver {
 
   final CameraHttp _http;
   final String _base;
-  ({int pan, int tilt, int zoom}) _last = (pan: 0.0, tilt: 0.0, zoom: 0.0);
+  ({int pan, int tilt, int zoom}) _last = (pan: 0, tilt: 0, zoom: 0);
 
   @override
   void move(double pan, double tilt) =>
@@ -162,7 +162,7 @@ class HikvisionPtz extends PtzDriver {
   void zoom(int direction) => _send(0, 0, direction.sign * 60);
 
   @override
-  void stop() => _send(0.0, 0.0, 0.0, force: true);
+  void stop() => _send(0, 0, 0, force: true);
 
   void _send(int pan, int tilt, int zoom, {bool force = false}) {
     final next = (pan: pan, tilt: tilt, zoom: zoom);

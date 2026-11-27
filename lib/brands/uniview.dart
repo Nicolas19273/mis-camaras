@@ -7,7 +7,7 @@ class UniviewAdapter extends BrandAdapter {
 
   /// Uniview:
   /// - Cámara: /media/video1 (principal) y /media/video2 (secundario).
-  /// - NVR: /unicast/c<canal>/s0/live (principal) y s1 (secundario).
+  /// - NVR: /unicast/c(canal)/s0/live (principal) y s1 (secundario).
   @override
   String rtspPath(int channel, StreamQuality quality) =>
       quality == StreamQuality.main ? '/media/video1' : '/media/video2';

@@ -6,8 +6,8 @@ class HanwhaAdapter extends BrandAdapter {
   const HanwhaAdapter();
 
   /// Hanwha Wisenet:
-  /// - Cámara: /profile<n>/media.smp (al agregarla, ONVIF indica qué perfil es cuál).
-  /// - NVR: /LiveChannel/<canal desde 0>/media.smp/profile=1 (en vivo) o 3 (remoto, liviano).
+  /// - Cámara: /profileN/media.smp (al agregarla, ONVIF indica qué perfil es cuál).
+  /// - NVR: /LiveChannel/(canal desde 0)/media.smp/profile=1 (en vivo) o 3 (remoto, liviano).
   @override
   String rtspPath(int channel, StreamQuality quality) =>
       quality == StreamQuality.main ? '/profile2/media.smp' : '/profile3/media.smp';
