@@ -6,7 +6,7 @@ import '../models/device.dart';
 import '../services/app_store.dart';
 import '../theme.dart';
 import '../widgets/live_video.dart';
-import 'network_screen.dart';
+import 'device_tools_screen.dart';
 
 /// Formulario para agregar o editar un equipo.
 class DeviceFormScreen extends StatefulWidget {
@@ -108,12 +108,12 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  /// Abre "Red del equipo" para cambiar la IP de la cámara o el NVR.
-  Future<void> _openNetwork() async {
+  /// Abre las herramientas del equipo (IP, cámaras, rescate, reinicio).
+  Future<void> _openTools() async {
     final device = widget.device;
     if (device == null) return;
     final newHost = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => NetworkScreen(store: widget.store, device: device)),
+      MaterialPageRoute(builder: (_) => DeviceToolsScreen(store: widget.store, device: device)),
     );
     if (newHost != null && mounted) setState(() => _host.text = newHost);
   }
@@ -279,9 +279,9 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
             if (_isEdit) ...[
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: _saving ? null : _openNetwork,
-                icon: const Icon(Icons.lan_outlined),
-                label: const Text('Cambiar IP del equipo'),
+                onPressed: _saving ? null : _openTools,
+                icon: const Icon(Icons.build_outlined),
+                label: const Text('Herramientas del equipo'),
                 style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
               ),
             ],

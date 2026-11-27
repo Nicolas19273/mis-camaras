@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -34,10 +35,10 @@ class LiveVideo extends StatefulWidget {
   final ValueChanged<LiveStatus>? onStatus;
 
   @override
-  State<LiveVideo> createState() => _LiveVideoState();
+  State<LiveVideo> createState() => LiveVideoState();
 }
 
-class _LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
+class LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
   late final Player _player;
   late final VideoController _controller;
   final _subscriptions = <StreamSubscription<dynamic>>[];
@@ -151,6 +152,16 @@ class _LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
     await _player.setVolume(widget.muted ? 0 : 100);
     if (_disposed) return;
     await _player.open(Media(widget.url));
+  }
+
+  /// Foto del cuadro actual (JPEG), o null si todavía no hay video.
+  Future<Uint8List?> snapshot() async {
+    if (!_hasVideo) return null;
+    try {
+      return await _player.screenshot();
+    } catch (_) {
+      return null;
+    }
   }
 
   void _scheduleRetry(Duration delay) {

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../brands/brands.dart';
 import '../models/device.dart';
 import '../services/camera_http.dart';
+import '../services/device_api.dart';
 
 /// Lo que puede hacer una cámara PTZ y cómo controlarla.
 class PtzSupport {
@@ -51,6 +52,8 @@ class PtzService {
   static final _cache = <String, Future<PtzSupport?>>{};
 
   static Future<PtzSupport?> detect(Device device, int channel) {
+    // Marcada a mano como "no es PTZ": no se pregunta.
+    if (device.noPtzChannels.contains(channel)) return Future.value(null);
     final key = [
       device.id,
       device.brand.name,
@@ -95,10 +98,39 @@ Future<PtzSupport?> detectHikvisionPtz(Device device, int channel) async {
     if (res.statusCode != 200) continue;
     final caps = parseHikvisionPtzCaps(res.body);
     if (caps == null) continue;
-    return PtzSupport(panTilt: caps.panTilt, zoom: caps.zoom, driver: HikvisionPtz(http, base));
+    final checked = await _checkModel(device, channel, caps);
+    if (checked == null) break;
+    return PtzSupport(panTilt: checked.panTilt, zoom: checked.zoom, driver: HikvisionPtz(http, base));
   }
   http.close();
   return null;
+}
+
+/// Revisa el modelo de la cámara: si es una fija conocida, no tiene joystick
+/// (solo zoom si su lente es motorizado), aunque el equipo diga otra cosa.
+Future<PtzCaps?> _checkModel(Device device, int channel, PtzCaps caps) async {
+  final api = DeviceApi(device);
+  try {
+    final model = await api.channelModel(channel);
+    return applyModelRules(device.brand, model, caps);
+  } finally {
+    api.close();
+  }
+}
+
+/// Reglas por modelo (pública para poder probarla).
+PtzCaps? applyModelRules(Brand brand, String? model, PtzCaps caps) {
+  var panTilt = caps.panTilt;
+  var zoom = caps.zoom;
+  if (model != null) {
+    final fixed = isFixedCameraModel(brand, model);
+    if (fixed == true) {
+      panTilt = false;
+      zoom = zoom && hasMotorizedLens(model);
+    }
+  }
+  if (!panTilt && !zoom) return null;
+  return (panTilt: panTilt, zoom: zoom);
 }
 
 typedef PtzCaps = ({bool panTilt, bool zoom});
@@ -106,11 +138,10 @@ typedef PtzCaps = ({bool panTilt, bool zoom});
 /// Lee la respuesta de /capabilities. Devuelve null si el canal no es PTZ.
 PtzCaps? parseHikvisionPtzCaps(String body) {
   if (body.contains('notSupport') || body.contains('<statusCode>4</statusCode>')) return null;
-  if (!body.contains('PTZ')) return null;
+  // Solo cuenta lo que el equipo declara explícitamente.
   final panTilt = body.contains('ContinuousPanTiltSpace');
   final zoom = body.contains('ContinuousZoomSpace');
-  // Algunos firmware responden con otro formato: si dice PTZ pero no detalla, asumimos completo.
-  if (!panTilt && !zoom) return (panTilt: true, zoom: true);
+  if (!panTilt && !zoom) return null;
   return (panTilt: panTilt, zoom: zoom);
 }
 
@@ -165,7 +196,9 @@ Future<PtzSupport?> detectDahuaPtz(Device device, int channel) async {
     if (res.statusCode != 200) continue;
     final caps = parseDahuaPtzCaps(res.body);
     if (caps == null) continue;
-    return PtzSupport(panTilt: caps.panTilt, zoom: caps.zoom, driver: DahuaPtz(http, ch));
+    final checked = await _checkModel(device, channel, caps);
+    if (checked == null) break;
+    return PtzSupport(panTilt: checked.panTilt, zoom: checked.zoom, driver: DahuaPtz(http, ch));
   }
   http.close();
   return null;
@@ -174,7 +207,9 @@ Future<PtzSupport?> detectDahuaPtz(Device device, int channel) async {
 /// Lee la respuesta "caps.Pan=true / caps.Tile=true / caps.Zoom=true".
 PtzCaps? parseDahuaPtzCaps(String body) {
   bool flag(String key) => RegExp('caps\\.$key=true', caseSensitive: false).hasMatch(body);
-  final panTilt = flag('Pan') || flag('Tile') || flag('Tilt');
+  // Debe declarar giro horizontal Y vertical: las fijas con puerto RS-485
+  // suelen informar solo parte de esto.
+  final panTilt = flag('Pan') && (flag('Tile') || flag('Tilt'));
   final zoom = flag('Zoom');
   if (!panTilt && !zoom) return null;
   return (panTilt: panTilt, zoom: zoom);

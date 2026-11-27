@@ -47,10 +47,11 @@ class AppStore extends ChangeNotifier {
   /// Buscar actualizaciones al abrir la app.
   bool get autoUpdate => _autoUpdate;
 
-  /// Todas las cámaras a mostrar (cada canal de cada equipo).
+  /// Todas las cámaras a mostrar (cada canal visible de cada equipo).
   List<CameraRef> get cameras => [
         for (final d in _devices)
-          for (var ch = 1; ch <= d.channels; ch++) CameraRef(d, ch),
+          for (var ch = 1; ch <= d.channels; ch++)
+            if (!d.hiddenChannels.contains(ch)) CameraRef(d, ch),
       ];
 
   Device? deviceById(String id) {
@@ -113,6 +114,32 @@ class AppStore extends ChangeNotifier {
     _devices.insert(newIndex, d);
     notifyListeners();
     await _persistDevices();
+  }
+
+  /// Marca o desmarca un canal como "no es PTZ".
+  Future<void> setNoPtz(String deviceId, int channel, bool noPtz) async {
+    final d = deviceById(deviceId);
+    if (d == null) return;
+    final set = {...d.noPtzChannels};
+    noPtz ? set.add(channel) : set.remove(channel);
+    await saveDevice(d.copyWith(noPtzChannels: set));
+  }
+
+  // --- Respaldo de red (para deshacer un cambio de IP) ------------------------
+
+  /// Guarda la configuración de red anterior de un equipo.
+  Future<void> saveNetworkBackup(String deviceId, Map<String, dynamic> data) async {
+    await (await _p()).setString('netbackup_$deviceId', jsonEncode(data));
+  }
+
+  Map<String, dynamic>? networkBackup(String deviceId) {
+    final raw = _prefs?.getString('netbackup_$deviceId');
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 
   // --- Preferencias ----------------------------------------------------------

@@ -21,6 +21,10 @@ class Device {
     this.username = 'admin',
     this.password = '',
     this.channels = 1,
+    this.mac,
+    this.channelNames = const {},
+    this.hiddenChannels = const {},
+    this.noPtzChannels = const {},
   });
 
   final String id;
@@ -33,7 +37,7 @@ class Device {
   /// Puerto del video en vivo (casi siempre 554).
   final int rtspPort;
 
-  /// Puerto web del equipo. Se usará para la configuración (ISAPI / API Dahua).
+  /// Puerto web del equipo (ISAPI / API Dahua): PTZ, red, información.
   final int httpPort;
 
   final String username;
@@ -45,9 +49,25 @@ class Device {
   /// 1 para una cámara, o la cantidad de canales del NVR.
   final int channels;
 
+  /// MAC del equipo: sirve para encontrarlo si cambia de IP.
+  final String? mac;
+
+  /// Nombre propio de cada canal (ej. 3 → "Patio").
+  final Map<int, String> channelNames;
+
+  /// Canales que no se muestran en el mosaico.
+  final Set<int> hiddenChannels;
+
+  /// Canales marcados a mano como "no es PTZ".
+  final Set<int> noPtzChannels;
+
   bool get isRecorder => channels > 1;
 
-  String channelLabel(int channel) => isRecorder ? '$name · Cám $channel' : name;
+  String channelLabel(int channel) {
+    final custom = channelNames[channel]?.trim();
+    if (custom != null && custom.isNotEmpty) return custom;
+    return isRecorder ? '$name · Cám $channel' : name;
+  }
 
   Device copyWith({
     String? name,
@@ -58,6 +78,10 @@ class Device {
     String? username,
     String? password,
     int? channels,
+    String? mac,
+    Map<int, String>? channelNames,
+    Set<int>? hiddenChannels,
+    Set<int>? noPtzChannels,
   }) {
     return Device(
       id: id,
@@ -69,6 +93,10 @@ class Device {
       username: username ?? this.username,
       password: password ?? this.password,
       channels: channels ?? this.channels,
+      mac: mac ?? this.mac,
+      channelNames: channelNames ?? this.channelNames,
+      hiddenChannels: hiddenChannels ?? this.hiddenChannels,
+      noPtzChannels: noPtzChannels ?? this.noPtzChannels,
     );
   }
 
@@ -82,9 +110,26 @@ class Device {
         'httpPort': httpPort,
         'username': username,
         'channels': channels,
+        if (mac != null) 'mac': mac,
+        if (channelNames.isNotEmpty)
+          'channelNames': {for (final e in channelNames.entries) '${e.key}': e.value},
+        if (hiddenChannels.isNotEmpty) 'hidden': hiddenChannels.toList()..sort(),
+        if (noPtzChannels.isNotEmpty) 'noPtz': noPtzChannels.toList()..sort(),
       };
 
   factory Device.fromJson(Map<String, dynamic> json) {
+    Set<int> intSet(Object? v) =>
+        v is List ? v.map((e) => (e as num).toInt()).toSet() : <int>{};
+
+    final names = <int, String>{};
+    final rawNames = json['channelNames'];
+    if (rawNames is Map) {
+      rawNames.forEach((k, v) {
+        final ch = int.tryParse('$k');
+        if (ch != null && v is String) names[ch] = v;
+      });
+    }
+
     return Device(
       id: json['id'] as String,
       name: json['name'] as String? ?? 'Equipo',
@@ -94,6 +139,10 @@ class Device {
       httpPort: json['httpPort'] as int? ?? 80,
       username: json['username'] as String? ?? 'admin',
       channels: json['channels'] as int? ?? 1,
+      mac: json['mac'] as String?,
+      channelNames: names,
+      hiddenChannels: intSet(json['hidden']),
+      noPtzChannels: intSet(json['noPtz']),
     );
   }
 }

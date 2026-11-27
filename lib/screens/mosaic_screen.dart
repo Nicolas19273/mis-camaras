@@ -73,6 +73,7 @@ class _MosaicScreenState extends State<MosaicScreen> {
           cameras: widget.cameras,
           initialIndex: index,
           restoreSystemUi: false,
+          store: widget.store,
         ),
       ),
     );

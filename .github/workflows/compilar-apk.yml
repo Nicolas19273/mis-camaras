@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION_BASE: '0.4'
+  VERSION_BASE: '0.5'
 
 jobs:
   apk:
@@ -59,14 +59,14 @@ jobs:
           cp -r lib test app/
           cd app
           flutter pub add media_kit media_kit_video media_kit_libs_video \
-            shared_preferences flutter_secure_storage http open_filex crypto background_downloader
+            shared_preferences flutter_secure_storage http open_filex crypto background_downloader gal
 
           # Permisos: internet, instalar actualizaciones, notificaciones y búsqueda en el WiFi.
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n    <application|' "$MANIFEST"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>\n    <application|' "$MANIFEST"
           sed -i 's|android:label="mis_camaras"|android:label="Mis Cámaras"|' "$MANIFEST"
           # Permite hablar por HTTP con las cámaras de la red local (PTZ y configuración).
-          sed -i 's|<application|<application android:usesCleartextTraffic="true"|' "$MANIFEST"
+          sed -i 's|<application|<application android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"|' "$MANIFEST"
           grep -n "permission\|android:label\|Cleartext" "$MANIFEST"
 
           # El descargador en segundo plano necesita Kotlin 2.1 o más nuevo.

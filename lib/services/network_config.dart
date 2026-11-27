@@ -182,6 +182,32 @@ class NetworkConfig {
     return null;
   }
 
+  /// true si algo responde en esa IP en alguno de esos puertos.
+  static Future<bool> hostResponds(String ip, List<int> ports) async {
+    for (final port in ports) {
+      try {
+        final s = await Socket.connect(ip, port, timeout: const Duration(milliseconds: 700));
+        s.destroy();
+        return true;
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  /// Busca una IP libre en la red del teléfono (primero .100 a .199).
+  static Future<String?> suggestFreeIp(String phoneIp, Set<String> exclude) async {
+    final prefix = phoneIp.substring(0, phoneIp.lastIndexOf('.') + 1);
+    final candidates = [
+      for (var i = 100; i < 200; i++) '$prefix$i',
+      for (var i = 50; i < 100; i++) '$prefix$i',
+    ];
+    for (final ip in candidates) {
+      if (ip == phoneIp || exclude.contains(ip)) continue;
+      if (!await ipInUse(ip)) return ip;
+    }
+    return null;
+  }
+
   /// true si algo ya responde en esa IP (puerto web o de video).
   static Future<bool> ipInUse(String ip) async {
     for (final port in [80, 554, 8000, 37777]) {

@@ -60,7 +60,7 @@ class _LiveScreenState extends State<LiveScreen> {
   }
 
   void _openCamera(List<CameraRef> cameras, int index) =>
-      _pushPaused(CameraViewScreen(cameras: cameras, initialIndex: index));
+      _pushPaused(CameraViewScreen(cameras: cameras, initialIndex: index, store: widget.store));
 
   void _openMosaic(List<CameraRef> cameras) =>
       _pushPaused(MosaicScreen(store: widget.store, cameras: cameras));
@@ -93,6 +93,22 @@ class _LiveScreenState extends State<LiveScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Renombrar cámara'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _rename(camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.visibility_off_outlined),
+              title: const Text('Ocultar del mosaico'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _hide(camera);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('Editar equipo'),
               onTap: () {
@@ -105,6 +121,55 @@ class _LiveScreenState extends State<LiveScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _rename(CameraRef camera) async {
+    final controller = TextEditingController(text: camera.device.channelNames[camera.channel] ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Renombrar cámara'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: fieldDecoration('Nombre', hint: camera.label),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text), child: const Text('Guardar')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null) return;
+    final d = widget.store.deviceById(camera.device.id);
+    if (d == null) return;
+    final names = {...d.channelNames};
+    name.trim().isEmpty ? names.remove(camera.channel) : names[camera.channel] = name.trim();
+    await widget.store.saveDevice(d.copyWith(channelNames: names));
+  }
+
+  Future<void> _hide(CameraRef camera) async {
+    final d = widget.store.deviceById(camera.device.id);
+    if (d == null) return;
+    await widget.store.saveDevice(d.copyWith(hiddenChannels: {...d.hiddenChannels, camera.channel}));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('${camera.label} se ocultó del mosaico.'),
+      action: SnackBarAction(
+        label: 'Deshacer',
+        onPressed: () {
+          final current = widget.store.deviceById(camera.device.id);
+          if (current == null) return;
+          widget.store.saveDevice(current.copyWith(
+            hiddenChannels: {...current.hiddenChannels}..remove(camera.channel),
+          ));
+        },
+      ),
+    ));
   }
 
   @override

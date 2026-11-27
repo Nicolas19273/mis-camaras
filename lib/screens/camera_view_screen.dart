@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gal/gal.dart';
 
 import '../brands/brand_adapter.dart';
 import '../brands/brands.dart';
 import '../models/device.dart';
 import '../ptz/ptz.dart';
+import '../services/app_store.dart';
 import '../services/camera_status.dart';
 import '../widgets/brand_badge.dart';
 import '../widgets/live_clock.dart';
@@ -25,10 +27,14 @@ class CameraViewScreen extends StatefulWidget {
     required this.cameras,
     required this.initialIndex,
     this.restoreSystemUi = true,
+    this.store,
   });
 
   final List<CameraRef> cameras;
   final int initialIndex;
+
+  /// Para guardar ajustes por cámara (por ejemplo, "no es PTZ").
+  final AppStore? store;
 
   /// false cuando se abre desde el mosaico (que ya está en pantalla completa).
   final bool restoreSystemUi;
@@ -50,6 +56,8 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
   /// Resultado de revisar si cada cámara es PTZ (null = no lo es / aún no se sabe).
   final _ptz = <int, PtzSupport?>{};
   bool _ptzVisible = true;
+  final _videoKeys = <int, GlobalKey<LiveVideoState>>{};
+  bool _savingPhoto = false;
 
   @override
   void initState() {
@@ -57,6 +65,77 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _scheduleHide();
     _detectPtz(widget.initialIndex);
+  }
+
+  void _snack(String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+  /// Guarda en la galería una foto del cuadro que se está viendo.
+  Future<void> _takePhoto() async {
+    if (_savingPhoto) return;
+    _savingPhoto = true;
+    try {
+      final bytes = await _videoKeys[_index]?.currentState?.snapshot();
+      if (bytes == null) {
+        _snack('Espera a que se vea el video para tomar la foto.');
+        return;
+      }
+      if (!await Gal.hasAccess()) await Gal.requestAccess();
+      final camera = widget.cameras[_index];
+      final now = DateTime.now();
+      String two(int n) => n.toString().padLeft(2, '0');
+      final stamp = '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
+      final safeName = camera.label.replaceAll(RegExp(r'[^\w]+'), '_');
+      await Gal.putImageBytes(bytes, name: 'MisCamaras_${safeName}_$stamp');
+      _snack('Foto guardada en la galería.');
+    } catch (e) {
+      _snack('No se pudo guardar la foto.');
+    } finally {
+      _savingPhoto = false;
+    }
+  }
+
+  /// Menú del distintivo PTZ: permite marcar la cámara como fija.
+  Future<void> _ptzMenu() async {
+    final camera = widget.cameras[_index];
+    final store = widget.store;
+    final notPtz = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('¿Esta cámara no se mueve?',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              const Text(
+                'Si es una cámara fija y el joystick no hace nada, márcala como "No es PTZ" '
+                'y no volverá a aparecer. Lo puedes deshacer en Equipos → Herramientas → Cámaras.',
+                style: TextStyle(height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: store == null ? null : () => Navigator.of(ctx).pop(true),
+                  child: const Text('No es PTZ'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (notPtz != true || store == null) return;
+    await store.setNoPtz(camera.device.id, camera.channel, true);
+    if (!mounted) return;
+    _ptz[_index]?.driver.stop();
+    setState(() => _ptz[_index] = null);
+    _snack('Listo: no se mostrará el joystick en ${camera.label}.');
   }
 
   void _detectPtz(int index) {
@@ -130,6 +209,7 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
               _detectPtz(i);
             },
             itemBuilder: (context, i) => _CameraPage(
+              videoKey: _videoKeys.putIfAbsent(i, () => GlobalKey<LiveVideoState>()),
               camera: widget.cameras[i],
               quality: _quality,
               muted: _muted,
@@ -193,7 +273,9 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
                           ),
                         ),
                         if (ptz != null) ...[
-                          Container(
+                          GestureDetector(
+                            onTap: _ptzMenu,
+                            child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.black54,
@@ -208,6 +290,7 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
                                 letterSpacing: 1,
                               ),
                             ),
+                          ),
                           ),
                           const SizedBox(width: 6),
                         ],
@@ -255,20 +338,25 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
                                     : StreamQuality.main;
                               })),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         _ControlButton(
                           icon: _muted ? Icons.volume_off : Icons.volume_up,
                           onTap: () => _touch(() => setState(() => _muted = !_muted)),
                         ),
                         if (ptz != null) ...[
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
                           _ControlButton(
                             icon: Icons.open_with,
                             highlighted: _ptzVisible,
                             onTap: () => _touch(() => setState(() => _ptzVisible = !_ptzVisible)),
                           ),
                         ],
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
+                        _ControlButton(
+                          icon: Icons.photo_camera_outlined,
+                          onTap: () => _touch(_takePhoto),
+                        ),
+                        const SizedBox(width: 8),
                         Text(
                           '${_index + 1} / $count',
                           style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -314,6 +402,7 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
 /// Una página: video con zoom.
 class _CameraPage extends StatefulWidget {
   const _CameraPage({
+    required this.videoKey,
     required this.camera,
     required this.quality,
     required this.muted,
@@ -322,6 +411,7 @@ class _CameraPage extends StatefulWidget {
     required this.onStatus,
   });
 
+  final GlobalKey<LiveVideoState> videoKey;
   final CameraRef camera;
   final StreamQuality quality;
   final bool muted;
@@ -373,6 +463,7 @@ class _CameraPageState extends State<_CameraPage> {
         maxScale: 6,
         panEnabled: _zoomed,
         child: LiveVideo(
+          key: widget.videoKey,
           url: url,
           fit: BoxFit.contain,
           muted: widget.muted,
@@ -429,7 +520,7 @@ class _ControlButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: enabled ? onTap : null,
         child: SizedBox(
-          width: 48,
+          width: 44,
           height: 40,
           child: Center(
             child: icon != null

@@ -31,7 +31,7 @@ y en *Ajustes*). Toca **Actualizar ahora**:
 
 ---
 
-## Qué hace la versión 0.4
+## Qué hace la versión 0.5
 
 - **En vivo:** mosaico estilo NVR con vistas de **1, 4, 9 o 16** cámaras, estado
   de cada cámara (en vivo, conectando, sin conexión) y botón para **reconectar todas**.
@@ -42,8 +42,16 @@ y en *Ajustes*). Toca **Actualizar ahora**:
 - **Buscar en mi red:** encuentra solos los equipos Hikvision y Dahua del WiFi
   (SADP, búsqueda Dahua, ONVIF y rastreo HTTP). Eliges cuáles, escribes la contraseña
   una vez y la app detecta modelo y cantidad de cámaras de cada NVR.
-- **Cambiar la IP del equipo:** en Equipos → editar → *Cambiar IP del equipo*. IP fija o
-  automática (DHCP), revisa que la IP esté libre, pide confirmación y se reconecta sola.
+- **Herramientas del equipo** (Equipos → editar → *Herramientas*):
+  - Información: modelo, firmware, serie, IP y MAC.
+  - Nombres de cada cámara (se traen solos del NVR), ocultar canales y desactivar el joystick.
+  - **Cambiar IP con protecciones:** modo seguro (solo IPs de tu red), revisa que la IP esté
+    libre y que el router responda, sugiere una IP libre, guarda un respaldo para volver
+    atrás y, si el equipo no responde, lo busca por su MAC (rescate).
+  - **Buscar equipo perdido:** si cambió de IP, lo encuentra por su MAC y actualiza la app.
+  - Reiniciar el equipo.
+- **Foto:** en pantalla completa, el botón de cámara guarda una foto en la galería.
+- **Mosaico:** mantén presionada una cámara para renombrarla u ocultarla.
 - **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
   y calidad del mosaico.
 - **Cámaras PTZ:** si una cámara se puede mover, en pantalla completa aparece un
@@ -118,7 +126,7 @@ Si algún día quieres compilarla tú mismo, con Flutter instalado:
 flutter create --org cl.miscamaras --project-name mis_camaras --platforms android,ios app
 rm -rf app/lib app/test && cp -r lib test app/
 cd app
-flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage http open_filex crypto background_downloader
+flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage http open_filex crypto background_downloader gal
 flutter run
 ```
 

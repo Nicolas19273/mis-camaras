@@ -4,6 +4,7 @@ import 'dart:io';
 import '../models/device.dart';
 import 'app_store.dart';
 import 'camera_http.dart';
+import 'device_api.dart';
 import 'discovery.dart';
 
 enum SetupResult { added, wrongPassword, unreachable, notActivated, unsupported }
@@ -49,7 +50,23 @@ class AutoSetup {
           : await _dahuaInfo(http, found);
       if (info == null) return const SetupOutcome(SetupResult.wrongPassword);
 
-      final device = draft.copyWith(name: info.name, channels: info.channels);
+      // Nombres que el equipo ya tiene para cada cámara (ej. "Patio").
+      var names = <int, String>{};
+      final api = DeviceApi(draft.copyWith(channels: info.channels));
+      try {
+        names = await api.channelNames();
+      } catch (_) {
+      } finally {
+        api.close();
+      }
+      names.removeWhere((ch, _) => ch < 1 || ch > info.channels);
+
+      final device = draft.copyWith(
+        name: info.name,
+        channels: info.channels,
+        mac: found.mac,
+        channelNames: info.channels > 1 ? names : const {},
+      );
       await store.saveDevice(device);
       return SetupOutcome(SetupResult.added, device: device);
     } on TimeoutException {
