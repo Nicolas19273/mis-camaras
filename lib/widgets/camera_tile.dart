@@ -3,17 +3,24 @@ import 'package:flutter/material.dart';
 import '../brands/brand_adapter.dart';
 import '../brands/brands.dart';
 import '../models/device.dart';
+import '../services/camera_status.dart';
 import 'brand_badge.dart';
 import 'live_video.dart';
+import 'status_dot.dart';
 
-/// Una cámara dentro de la cuadrícula. Usa el flujo secundario (liviano)
-/// para que el teléfono aguante varias a la vez.
-class CameraTile extends StatelessWidget {
+/// Una cámara dentro del mosaico, al estilo de un NVR:
+/// nombre arriba a la izquierda, estado arriba a la derecha.
+class CameraTile extends StatefulWidget {
   const CameraTile({
     super.key,
     required this.camera,
     required this.active,
     required this.onTap,
+    this.onLongPress,
+    this.registry,
+    this.showLabel = true,
+    this.quality = StreamQuality.sub,
+    this.fit = BoxFit.cover,
   });
 
   final CameraRef camera;
@@ -21,74 +28,107 @@ class CameraTile extends StatelessWidget {
   /// false = no reproduce (por ejemplo, mientras hay otra pantalla encima).
   final bool active;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final CameraStatusRegistry? registry;
+  final bool showLabel;
+  final StreamQuality quality;
+  final BoxFit fit;
 
   @override
-  Widget build(BuildContext context) {
-    final url = adapterFor(camera.device.brand)
-        .rtspUrl(camera.device, camera.channel, StreamQuality.sub);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (active)
-              LiveVideo(url: url)
-            else
-              const ColoredBox(color: Colors.black),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _LabelBar(text: camera.label, brand: camera.device.brand),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  State<CameraTile> createState() => _CameraTileState();
 }
 
-class _LabelBar extends StatelessWidget {
-  const _LabelBar({required this.text, required this.brand});
+class _CameraTileState extends State<CameraTile> {
+  LiveStatus _status = LiveStatus.connecting;
 
-  final String text;
-  final Brand brand;
+  String get _key => '${widget.camera.device.id}-${widget.camera.channel}';
+
+  void _onStatus(LiveStatus status) {
+    if (!mounted || !widget.active) return;
+    widget.registry?.set(_key, status);
+    setState(() => _status = status);
+  }
+
+  @override
+  void didUpdateWidget(CameraTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active && !widget.active) {
+      widget.registry?.remove(_key);
+      _status = LiveStatus.connecting;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.registry?.remove(_key);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(8, 14, 8, 5),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.transparent, Colors.black87],
-        ),
-      ),
-      child: Row(
+    final camera = widget.camera;
+    final url = adapterFor(camera.device.brand)
+        .rtspUrl(camera.device, camera.channel, widget.quality);
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: brandColor(brand),
-              shape: BoxShape.circle,
+          if (widget.active)
+            LiveVideo(url: url, fit: widget.fit, onStatus: _onStatus)
+          else
+            const ColoredBox(color: Colors.black),
+          // Sombra suave arriba para que se lea el texto sobre cualquier imagen.
+          const Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 34,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.black54, Colors.transparent],
+                ),
+              ),
             ),
           ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+          Positioned(
+            left: 6,
+            right: 6,
+            top: 5,
+            child: Row(
+              children: [
+                if (widget.showLabel) ...[
+                  Container(
+                    width: 3,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: brandColor(camera.device.brand),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      camera.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        shadows: [Shadow(blurRadius: 4)],
+                      ),
+                    ),
+                  ),
+                ] else
+                  const Spacer(),
+                if (widget.active) StatusDot(status: _status, size: 6),
+              ],
             ),
           ),
         ],

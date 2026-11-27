@@ -7,27 +7,34 @@ Está hecha en Flutter (Android y iPhone con el mismo código).
 
 GitHub compila la app solo cada vez que se actualiza el código.
 
-1. En el teléfono, abre este repositorio en el navegador y entra a **Releases**
-   (en la página principal, a la derecha o abajo).
-2. Abre la versión más reciente y toca el archivo **MisCamaras-v0.1.X.apk**.
-3. Cuando termine la descarga, ábrelo. Android te pedirá permiso para
-   **instalar apps de fuentes desconocidas** desde el navegador: acéptalo.
-4. Listo. Para actualizar, repite los mismos pasos con la versión nueva.
+**La primera vez:**
+1. En el teléfono, abre este repositorio en Chrome y entra a **Releases**.
+2. Abre la versión más reciente y toca el archivo **MisCamaras-v0.X.X.apk**.
+3. Ábrelo cuando termine la descarga. Android pedirá permiso para instalar apps
+   desde Chrome: acéptalo.
 
-> Si al actualizar Android dice *"La app no se instaló"*, desinstala la versión
-> anterior y vuelve a instalar (vas a tener que agregar los equipos de nuevo).
+**Después:** la app avisa sola cuando hay una versión nueva (aviso en *En vivo*
+y en *Ajustes*). Toca **Actualizar ahora**, confirma en la ventana de Android y listo:
+se instala encima, sin borrar tus equipos. La primera vez Android pedirá permiso
+para que *Mis Cámaras* instale actualizaciones.
 
-Para ver si una compilación está en curso o falló, revisa la pestaña **Actions**.
+> Para que la app pueda revisar las actualizaciones, este repositorio tiene que ser
+> **público**. El código no contiene contraseñas ni datos de tus cámaras: esos se
+> guardan solo en tu teléfono.
 
 ---
 
-## Qué hace esta versión (0.1)
+## Qué hace la versión 0.2
 
-- Agregar, editar y eliminar equipos: cámaras sueltas o NVR/DVR con varios canales.
-- **Cuadrícula en vivo** con todas las cámaras, de 1, 2 o 3 columnas.
-- **Pantalla completa** al tocar una cámara: zoom con los dedos, HD/SD y sonido.
-- Botón **Probar** para revisar la conexión antes de guardar.
-- Las contraseñas se guardan en el almacenamiento seguro del teléfono.
+- **En vivo:** mosaico estilo NVR con vistas de **1, 4, 9 o 16** cámaras, estado
+  de cada cámara (en vivo, conectando, sin conexión) y botón para **reconectar todas**.
+- **Mosaico a pantalla completa** en horizontal, con páginas si tienes muchas cámaras.
+- **Pantalla completa** por cámara: desliza para pasar a la siguiente, zoom con los
+  dedos, HD/SD, sonido, reloj y etiqueta *EN VIVO*.
+- **Equipos:** agregar, editar, eliminar y **ordenar** (mantén presionado y arrastra).
+- **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
+  y calidad del mosaico.
+- Contraseñas en el almacenamiento seguro del teléfono.
 - Reconexión automática si se corta el video. Si la contraseña está mal, **no**
   reintenta solo, para que la cámara no bloquee tu usuario.
 - El video se pausa cuando sales de la app.
@@ -59,6 +66,7 @@ Por ahora funciona **dentro de la red de tu casa** (mismo WiFi que las cámaras)
 lib/
 ├── main.dart                 Arranque de la app
 ├── app.dart                  Configuración general
+├── config.dart               Versión y repositorio (los pone GitHub al compilar)
 ├── theme.dart                ← COLORES Y ESTILO (cámbialos a tu gusto aquí)
 ├── models/device.dart        Qué datos tiene un equipo
 ├── brands/
@@ -66,11 +74,15 @@ lib/
 │   ├── hikvision.dart        Todo lo propio de Hikvision
 │   ├── dahua.dart            Todo lo propio de Dahua
 │   └── brands.dart           Elige el adaptador según la marca
-├── services/app_store.dart   Guarda los equipos en el teléfono
-├── screens/                  Pantallas (cuadrícula, pantalla completa, equipos, formulario)
-└── widgets/                  Piezas reutilizables (reproductor RTSP, cuadros, insignias)
+├── services/
+│   ├── app_store.dart        Guarda equipos y preferencias en el teléfono
+│   ├── update_service.dart   Busca, descarga e instala actualizaciones
+│   └── camera_status.dart    Cuenta cámaras en vivo / sin conexión
+├── screens/                  En vivo, mosaico, pantalla completa, equipos, ajustes
+└── widgets/                  Reproductor RTSP, cuadros del mosaico, reloj, etc.
 
-test/                         Pruebas de las direcciones RTSP
+test/                         Pruebas (direcciones RTSP y actualizaciones)
+branding/                     Ícono de la app
 .github/workflows/            Compilación automática del APK
 ```
 
@@ -85,7 +97,7 @@ Si algún día quieres compilarla tú mismo, con Flutter instalado:
 flutter create --org cl.miscamaras --project-name mis_camaras --platforms android,ios app
 rm -rf app/lib app/test && cp -r lib test app/
 cd app
-flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage
+flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage http path_provider open_filex
 flutter run
 ```
 

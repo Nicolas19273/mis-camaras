@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../services/camera_status.dart';
 import '../theme.dart';
 
 /// Reproductor de video en vivo por RTSP.
@@ -19,14 +20,18 @@ class LiveVideo extends StatefulWidget {
     this.fit = BoxFit.cover,
     this.muted = true,
     this.compact = true,
+    this.onStatus,
   });
 
   final String url;
   final BoxFit fit;
   final bool muted;
 
-  /// true = vista chica (cuadrícula): muestra el error de forma resumida.
+  /// true = vista chica (mosaico): muestra el error de forma resumida.
   final bool compact;
+
+  /// Avisa cuando la cámara pasa a conectando / en vivo / sin conexión.
+  final ValueChanged<LiveStatus>? onStatus;
 
   @override
   State<LiveVideo> createState() => _LiveVideoState();
@@ -43,6 +48,7 @@ class _LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
   bool _suspended = false;
   bool _disposed = false;
   String? _error;
+  LiveStatus? _lastStatus;
 
   @override
   void initState() {
@@ -62,11 +68,13 @@ class _LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
           _error = null;
         }
       });
+      _emitStatus();
     }));
 
     _subscriptions.add(_player.stream.error.listen((message) {
       if (!mounted || _suspended || _hasVideo) return;
       setState(() => _error = message);
+      _emitStatus();
       if (_everPlayed) _scheduleRetry(const Duration(seconds: 5));
     }));
 
@@ -77,6 +85,7 @@ class _LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
         _hasVideo = false;
         if (!_everPlayed) _error ??= 'Sin señal';
       });
+      _emitStatus();
       if (_everPlayed) _scheduleRetry(const Duration(seconds: 3));
     }));
 
@@ -107,6 +116,25 @@ class _LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
     }
   }
 
+  LiveStatus get _status {
+    if (_hasVideo) return LiveStatus.live;
+    if (_error != null) return LiveStatus.offline;
+    return LiveStatus.connecting;
+  }
+
+  /// Avisa el estado fuera del ciclo de dibujo (evita errores de Flutter
+  /// al cambiar el estado de otra pantalla mientras se arma esta).
+  void _emitStatus() {
+    final status = _status;
+    if (status == _lastStatus) return;
+    _lastStatus = status;
+    final callback = widget.onStatus;
+    if (callback == null) return;
+    scheduleMicrotask(() {
+      if (!_disposed) callback(status);
+    });
+  }
+
   Future<void> _open() async {
     _retryTimer?.cancel();
     if (_disposed) return;
@@ -116,6 +144,7 @@ class _LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
         _error = null;
       });
     }
+    _emitStatus();
 
     await _configureForRtsp(_player);
     if (_disposed) return;
@@ -157,10 +186,13 @@ class _LiveVideoState extends State<LiveVideo> with WidgetsBindingObserver {
         if (!_hasVideo)
           Center(
             child: _error == null
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                ? SizedBox(
+                    width: widget.compact ? 18 : 26,
+                    height: widget.compact ? 18 : 26,
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white54,
+                    ),
                   )
                 : _ErrorView(
                     compact: widget.compact,
@@ -210,11 +242,15 @@ class _ErrorView extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.videocam_off_outlined, color: AppColors.textMuted),
+        Icon(
+          Icons.videocam_off_outlined,
+          color: AppColors.textMuted,
+          size: compact ? 20 : 32,
+        ),
         const SizedBox(height: 4),
         const Text(
           'Sin conexión',
-          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+          style: TextStyle(color: AppColors.textMuted, fontSize: 11),
         ),
         if (!compact) ...[
           Padding(

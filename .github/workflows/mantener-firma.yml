@@ -1,0 +1,33 @@
+# GitHub borra lo guardado en caché si nadie lo usa en 7 días.
+# Este flujo "toca" la firma de la app cada semana para que no se pierda;
+# así las actualizaciones siempre se pueden instalar encima de la versión anterior.
+
+name: Mantener firma de la app
+
+on:
+  schedule:
+    - cron: '17 13 * * 1,4' # lunes y jueves
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mantener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Leer la firma guardada
+        id: firma
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: firma-app-v1
+
+      - name: Resultado
+        run: |
+          if [ "${{ steps.firma.outputs.cache-hit }}" = "true" ]; then
+            echo "Firma encontrada y renovada."
+          else
+            echo "::warning::No se encontró la firma guardada. La próxima compilación creará una nueva."
+          fi

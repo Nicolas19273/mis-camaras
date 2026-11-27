@@ -1,5 +1,6 @@
 # Compila la app para Android cada vez que se actualiza el código
 # y publica el APK en la sección "Releases" del repositorio.
+# La app revisa esa sección para ofrecer actualizaciones.
 # También se puede lanzar a mano desde la pestaña "Actions" → "Run workflow".
 
 name: Compilar APK
@@ -15,6 +16,9 @@ permissions:
 concurrency:
   group: compilar-apk
   cancel-in-progress: true
+
+env:
+  VERSION_BASE: '0.2'
 
 jobs:
   apk:
@@ -37,9 +41,11 @@ jobs:
           channel: stable
           cache: true
 
-      # Guarda la firma de la app entre compilaciones, para que Android
-      # deje actualizar la app encima de la versión anterior.
+      # La firma de la app se guarda entre compilaciones. Si cambia, Android
+      # no deja instalar la versión nueva encima de la anterior.
+      # El flujo "mantener-firma.yml" evita que GitHub la borre por inactividad.
       - name: Recuperar firma de la app
+        id: firma
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
@@ -52,11 +58,18 @@ jobs:
           rm -rf app/lib app/test
           cp -r lib test app/
           cd app
-          flutter pub add media_kit media_kit_video media_kit_libs_video shared_preferences flutter_secure_storage
+          flutter pub add media_kit media_kit_video media_kit_libs_video \
+            shared_preferences flutter_secure_storage http path_provider open_filex
+
+          # Permisos: internet (cámaras y GitHub) e instalar actualizaciones.
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>\n    <application|' "$MANIFEST"
           sed -i 's|android:label="mis_camaras"|android:label="Mis Cámaras"|' "$MANIFEST"
-          grep -n "INTERNET\|android:label" "$MANIFEST"
+          grep -n "permission\|android:label" "$MANIFEST"
+
+          # Ícono propio de la app.
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          cp -r ../branding/android/res/. android/app/src/main/res/
 
       - name: Revisar código
         working-directory: app
@@ -68,18 +81,35 @@ jobs:
         working-directory: app
         run: >
           flutter build apk --release
-          --build-name=0.1.${{ github.run_number }}
+          --build-name=${{ env.VERSION_BASE }}.${{ github.run_number }}
           --build-number=${{ github.run_number }}
+          --dart-define=BUILD_NUMBER=${{ github.run_number }}
+          --dart-define=VERSION_NAME=${{ env.VERSION_BASE }}.${{ github.run_number }}
+          --dart-define=GITHUB_REPO=${{ github.repository }}
 
       - name: Publicar APK en Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          FIRMA_NUEVA: ${{ steps.firma.outputs.cache-hit != 'true' }}
         run: |
-          TAG="v0.1.${{ github.run_number }}"
+          TAG="v${VERSION_BASE}.${{ github.run_number }}"
           APK="MisCamaras-$TAG.apk"
           cp app/build/app/outputs/flutter-apk/app-release.apk "$APK"
+
+          TITLE=$(printf '%s' "$COMMIT_MSG" | head -n 1)
+          [ -z "$TITLE" ] && TITLE="Compilación manual"
+          {
+            echo "$TITLE"
+            if [ "$FIRMA_NUEVA" = "true" ]; then
+              echo
+              echo "⚠️ Esta versión tiene una firma nueva. Si Android no deja instalarla encima,"
+              echo "desinstala la versión anterior y vuelve a instalar."
+            fi
+          } > notas.txt
+
           gh release create "$TAG" "$APK" \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --title "Mis Cámaras $TAG" \
-            --notes "Toca el archivo $APK para descargarlo e instalarlo en tu Android."
+            --notes-file notas.txt
