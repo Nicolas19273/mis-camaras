@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../brands/brand_adapter.dart';
 import '../models/device.dart';
+import '../recording/recording_api.dart';
+import '../recording/recording_monitor.dart';
 import '../services/app_store.dart';
 import '../services/camera_status.dart';
 import '../services/update_service.dart';
@@ -17,6 +21,7 @@ import 'device_form_screen.dart';
 import 'discovery_screen.dart';
 import 'group_editor_screen.dart';
 import 'mosaic_screen.dart';
+import 'recording_screen.dart';
 
 /// Pestaña "En vivo": mosaico de cámaras al estilo NVR.
 class LiveScreen extends StatefulWidget {
@@ -39,8 +44,23 @@ class _LiveScreenState extends State<LiveScreen> {
   /// Al cambiar este número se reconectan todas las cámaras.
   int _reloadToken = 0;
 
+  /// Revisa cada tanto si las cámaras están grabando (para el "● REC").
+  Timer? _recTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkRecording());
+    _recTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkRecording());
+  }
+
+  void _checkRecording() {
+    if (mounted && _videoActive) RecordingMonitor.instance.refresh(widget.store.devices);
+  }
+
   @override
   void dispose() {
+    _recTimer?.cancel();
     _registry.dispose();
     super.dispose();
   }
@@ -102,6 +122,15 @@ class _LiveScreenState extends State<LiveScreen> {
                 _rename(camera);
               },
             ),
+            if (RecordingApi.supports(camera.device))
+              ListTile(
+                leading: const Icon(Icons.fiber_manual_record, color: AppColors.danger),
+                title: const Text('Grabación'),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _pushPaused(RecordingScreen(store: widget.store, device: camera.device));
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.create_new_folder_outlined),
               title: const Text('Agregar a un grupo'),
@@ -250,7 +279,7 @@ class _LiveScreenState extends State<LiveScreen> {
             surfaceTintColor: Colors.transparent,
             titleSpacing: 16,
             toolbarHeight: 64,
-            title: _Header(registry: _registry, total: allCount),
+            title: _Header(registry: _registry, total: allCount, cameras: store.cameras),
             actions: [
               if (cameras.isNotEmpty) ...[
                 IconButton(
@@ -449,18 +478,20 @@ class _BrandHeader extends StatelessWidget {
 
 /// Título con el resumen de estado: "5 en vivo · 1 sin conexión".
 class _Header extends StatelessWidget {
-  const _Header({required this.registry, required this.total});
+  const _Header({required this.registry, required this.total, required this.cameras});
 
   final CameraStatusRegistry registry;
   final int total;
+  final List<CameraRef> cameras;
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: registry,
+      listenable: Listenable.merge([registry, RecordingMonitor.instance]),
       builder: (context, child) {
         final live = registry.count(LiveStatus.live);
         final offline = registry.count(LiveStatus.offline);
+        final recording = RecordingMonitor.instance.countRecording(cameras);
 
         String text;
         LiveStatus dot;
@@ -488,9 +519,25 @@ class _Header extends StatelessWidget {
               children: [
                 StatusDot(status: dot),
                 const SizedBox(width: 7),
-                Text(
-                  text,
-                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                Flexible(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: text),
+                        if (recording > 0) ...[
+                          const TextSpan(text: '   '),
+                          const WidgetSpan(
+                            alignment: PlaceholderAlignment.middle,
+                            child: Icon(Icons.fiber_manual_record, size: 10, color: AppColors.danger),
+                          ),
+                          TextSpan(text: ' $recording grabando'),
+                        ],
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  ),
                 ),
               ],
             ),

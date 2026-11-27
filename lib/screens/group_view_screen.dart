@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../brands/brand_adapter.dart';
 import '../models/camera_group.dart';
 import '../models/device.dart';
+import '../recording/recording_monitor.dart';
 import '../services/app_store.dart';
 import '../services/camera_status.dart';
 import '../theme.dart';
@@ -30,8 +33,25 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
   /// Se pausa el video mientras hay otra pantalla encima.
   bool _videoActive = true;
 
+  Timer? _recTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkRecording());
+    _recTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkRecording());
+  }
+
+  void _checkRecording() {
+    final group = widget.store.groupById(widget.groupId);
+    if (!mounted || !_videoActive || group == null) return;
+    final devices = {for (final c in widget.store.camerasOfGroup(group)) c.device.id: c.device};
+    RecordingMonitor.instance.refresh(devices.values);
+  }
+
   @override
   void dispose() {
+    _recTimer?.cancel();
     _registry.dispose();
     super.dispose();
   }

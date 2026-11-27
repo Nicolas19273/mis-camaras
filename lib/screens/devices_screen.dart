@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../models/device.dart';
+import '../recording/recording.dart';
+import '../recording/recording_api.dart';
+import '../recording/recording_monitor.dart';
 import '../services/app_store.dart';
 import '../theme.dart';
 import '../widgets/brand_badge.dart';
 import 'device_form_screen.dart';
 import 'discovery_screen.dart';
 import 'groups_tab.dart';
+import 'recording_screen.dart';
 
 /// Pestaña "Equipos": agregar, editar, eliminar y ordenar equipos,
 /// y armar grupos de cámaras (pestaña interna "Grupos").
@@ -30,9 +34,47 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
   bool get _onGroups => _tabs.index == 1;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => RecordingMonitor.instance.refresh(store.devices));
+  }
+
+  @override
   void dispose() {
     _tabs.dispose();
     super.dispose();
+  }
+
+  void _openRecording(Device d) => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => RecordingScreen(store: store, device: d)),
+      );
+
+  /// Botón con el estado de grabación del equipo (rojo = grabando).
+  Widget _recButton(Device d) {
+    final monitor = RecordingMonitor.instance;
+    return ListenableBuilder(
+      listenable: monitor,
+      builder: (context, child) {
+        final states = [for (var ch = 1; ch <= d.channels; ch++) monitor.stateOf(d, ch)];
+        final Color color;
+        final String tip;
+        if (states.contains(RecState.problem)) {
+          color = AppColors.connecting;
+          tip = 'Grabación: hay un problema';
+        } else if (states.contains(RecState.recording)) {
+          color = AppColors.danger;
+          tip = 'Grabación: grabando';
+        } else {
+          color = AppColors.textMuted;
+          tip = 'Grabación';
+        }
+        return IconButton(
+          tooltip: tip,
+          icon: Icon(Icons.fiber_manual_record, color: color),
+          onPressed: () => _openRecording(d),
+        );
+      },
+    );
   }
 
   Future<void> _edit(BuildContext context, [Device? device]) async {
@@ -93,10 +135,16 @@ class _DevicesScreenState extends State<DevicesScreen> with SingleTickerProvider
           ),
           isThreeLine: true,
           onTap: () => _edit(context, d),
-          trailing: IconButton(
-            tooltip: 'Eliminar',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => _confirmDelete(context, d),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (RecordingApi.supports(d)) _recButton(d),
+              IconButton(
+                tooltip: 'Eliminar',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => _confirmDelete(context, d),
+              ),
+            ],
           ),
         ),
       ),

@@ -15,6 +15,7 @@ import '../widgets/live_clock.dart';
 import '../widgets/live_video.dart';
 import '../widgets/ptz_pad.dart';
 import '../widgets/status_dot.dart';
+import '../widgets/rec_badge.dart';
 
 /// Una cámara en pantalla completa.
 /// - Desliza a los lados para pasar a la cámara siguiente o anterior.
@@ -272,6 +273,8 @@ class _CameraViewScreenState extends State<CameraViewScreen> {
                             ],
                           ),
                         ),
+                        RecBadge(device: camera.device, channel: camera.channel),
+                        const SizedBox(width: 8),
                         if (ptz != null) ...[
                           GestureDetector(
                             onTap: _ptzMenu,

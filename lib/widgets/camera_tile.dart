@@ -6,6 +6,7 @@ import '../models/device.dart';
 import '../services/camera_status.dart';
 import 'brand_badge.dart';
 import 'live_video.dart';
+import 'rec_badge.dart';
 import 'status_dot.dart';
 
 /// Una cámara dentro del mosaico, al estilo de un NVR:
@@ -21,6 +22,7 @@ class CameraTile extends StatefulWidget {
     this.showLabel = true,
     this.quality = StreamQuality.sub,
     this.fit = BoxFit.cover,
+    this.showRec = true,
   });
 
   final CameraRef camera;
@@ -33,6 +35,9 @@ class CameraTile extends StatefulWidget {
   final bool showLabel;
   final StreamQuality quality;
   final BoxFit fit;
+
+  /// Mostrar "● REC" si la cámara está grabando.
+  final bool showRec;
 
   @override
   State<CameraTile> createState() => _CameraTileState();
@@ -127,6 +132,10 @@ class _CameraTileState extends State<CameraTile> {
                   ),
                 ] else
                   const Spacer(),
+                if (widget.showRec) ...[
+                  RecBadge(device: camera.device, channel: camera.channel),
+                  const SizedBox(width: 6),
+                ],
                 if (widget.active) StatusDot(status: _status, size: 6),
               ],
             ),

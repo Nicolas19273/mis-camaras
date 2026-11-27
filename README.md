@@ -68,6 +68,10 @@ y en *Ajustes*). Toca **Actualizar ahora**:
 - **Grupos:** en Equipos → Grupos crea grupos propios (ej. *Patio*, *Local*) marcando
   varias cámaras a la vez, de cualquier equipo o marca. Toca un grupo para verlo en vivo.
   También desde En vivo: mantén presionada una cámara → *Agregar a un grupo*.
+- **Grabación** (Hikvision y Dahua): en Equipos toca el punto ● de un equipo (o Herramientas →
+  Grabación). Muestra el disco o la tarjeta SD, permite grabar *Siempre (24/7)*, *Con movimiento*
+  o apagarla (todas las cámaras de un toque o una por una), formatea discos nuevos y comprueba
+  que haya video guardado de verdad. Sobre cada cámara aparece **● REC** si está grabando.
 - **Ajustes:** actualizaciones, color principal a elección, nombres sobre las cámaras
   y calidad del mosaico.
 - **Cámaras PTZ:** si una cámara se puede mover, en pantalla completa aparece un

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/device.dart';
+import '../recording/recording_api.dart';
 import '../services/app_store.dart';
 import '../services/device_api.dart';
 import '../services/discovery.dart';
@@ -9,6 +10,7 @@ import '../theme.dart';
 import '../widgets/brand_badge.dart';
 import 'channels_screen.dart';
 import 'network_screen.dart';
+import 'recording_screen.dart';
 
 /// Herramientas de un equipo: información, cámaras, IP, rescate y reinicio.
 /// Devuelve la IP nueva al cerrar, si cambió.
@@ -242,6 +244,19 @@ class _DeviceToolsScreenState extends State<DeviceToolsScreen> {
                   ],
                 ),
               ),
+            ),
+            const SectionLabel('Grabación'),
+            _ToolTile(
+              icon: Icons.fiber_manual_record,
+              title: 'Grabación',
+              subtitle: RecordingApi.supports(device)
+                  ? 'Disco o tarjeta SD, grabar siempre o con movimiento, y ver si está grabando'
+                  : 'Por ahora solo Hikvision y Dahua. En esta marca, hazlo desde su página web.',
+              onTap: RecordingApi.supports(device)
+                  ? () => Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => RecordingScreen(store: widget.store, device: _device),
+                      ))
+                  : null,
             ),
             const SectionLabel('Cámaras'),
             _ToolTile(
