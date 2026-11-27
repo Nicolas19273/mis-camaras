@@ -254,8 +254,10 @@ class _DeviceToolsScreenState extends State<DeviceToolsScreen> {
             _ToolTile(
               icon: Icons.lan_outlined,
               title: 'Cambiar IP',
-              subtitle: 'Con modo seguro, respaldo y rescate automático',
-              onTap: _openNetwork,
+              subtitle: device.brand.hasFullApi
+                  ? 'Con modo seguro, respaldo y rescate automático'
+                  : 'Por ahora solo Hikvision y Dahua. En esta marca, hazlo desde su página web.',
+              onTap: device.brand.hasFullApi ? _openNetwork : null,
             ),
             const SizedBox(height: 8),
             _ToolTile(
@@ -308,7 +310,7 @@ class _ToolTile extends StatelessWidget {
         leading: Icon(icon),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(subtitle, style: const TextStyle(color: AppColors.textMuted)),
-        trailing: trailing ?? const Icon(Icons.chevron_right),
+        trailing: trailing ?? (onTap == null ? null : const Icon(Icons.chevron_right)),
         onTap: onTap,
       ),
     );

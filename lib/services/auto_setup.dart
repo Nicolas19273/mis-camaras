@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../models/device.dart';
+import '../onvif/onvif_client.dart';
 import 'app_store.dart';
 import 'camera_http.dart';
 import 'device_api.dart';
@@ -43,6 +44,8 @@ class AutoSetup {
       channels: found.channels ?? 1,
     );
 
+    if (!brand.hasFullApi) return _registerOnvif(draft, found);
+
     final http = CameraHttp(draft);
     try {
       final info = brand == Brand.hikvision
@@ -77,6 +80,48 @@ class AutoSetup {
       return SetupOutcome(SetupResult.unreachable, detail: '$e');
     } finally {
       http.close();
+    }
+  }
+
+  // --- Otras marcas (ONVIF) ------------------------------------------------------
+
+  /// Comprueba la contraseña por ONVIF y le pregunta a la cámara cuáles son
+  /// sus flujos de video reales (así no hay que adivinar la ruta RTSP).
+  Future<SetupOutcome> _registerOnvif(Device draft, FoundDevice found) async {
+    final client = OnvifClient(draft);
+    try {
+      OnvifInfo? info;
+      try {
+        info = await client.info();
+      } on OnvifException catch (e) {
+        if (e.auth) return const SetupOutcome(SetupResult.wrongPassword);
+      }
+      var device = draft;
+      if (!found.isRecorder) {
+        final streams = await client.detectStreams();
+        device = device.copyWith(
+          rtspMain: streams.main,
+          rtspSub: streams.sub,
+          rtspPort: streams.port,
+        );
+      }
+      device = device.copyWith(
+        name: _pickName(found.name, info?.model ?? found.model, found),
+        mac: found.mac,
+      );
+      await store.saveDevice(device);
+      return SetupOutcome(SetupResult.added, device: device);
+    } on OnvifException catch (e) {
+      if (e.auth) return const SetupOutcome(SetupResult.wrongPassword);
+      return SetupOutcome(SetupResult.unreachable, detail: e.message);
+    } on TimeoutException {
+      return const SetupOutcome(SetupResult.unreachable);
+    } on SocketException {
+      return const SetupOutcome(SetupResult.unreachable);
+    } catch (e) {
+      return SetupOutcome(SetupResult.unreachable, detail: '$e');
+    } finally {
+      client.close();
     }
   }
 

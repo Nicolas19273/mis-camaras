@@ -1,12 +1,38 @@
 /// Marcas soportadas. Para agregar otra marca después, se suma aquí
 /// y se crea su adaptador en lib/brands/.
-enum Brand { hikvision, dahua }
+enum Brand { hikvision, dahua, vivotek, axis, hanwha, uniview, onvif }
 
 extension BrandLabel on Brand {
   String get label => switch (this) {
         Brand.hikvision => 'Hikvision',
         Brand.dahua => 'Dahua',
+        Brand.vivotek => 'Vivotek',
+        Brand.axis => 'Axis',
+        Brand.hanwha => 'Hanwha Wisenet',
+        Brand.uniview => 'Uniview',
+        Brand.onvif => 'Otra (ONVIF)',
       };
+
+  /// Nombre corto para chips y listas.
+  String get shortLabel => switch (this) {
+        Brand.hanwha => 'Hanwha',
+        Brand.onvif => 'ONVIF',
+        _ => label,
+      };
+
+  /// Letra de la insignia de color.
+  String get letter => switch (this) {
+        Brand.hikvision => 'H',
+        Brand.dahua => 'D',
+        Brand.vivotek => 'V',
+        Brand.axis => 'A',
+        Brand.hanwha => 'W',
+        Brand.uniview => 'U',
+        Brand.onvif => 'O',
+      };
+
+  /// Marcas con API propia completa (cambio de IP, nombres de canales).
+  bool get hasFullApi => this == Brand.hikvision || this == Brand.dahua;
 }
 
 /// Un equipo: una cámara suelta (1 canal) o un NVR/DVR (varios canales).
@@ -25,6 +51,8 @@ class Device {
     this.channelNames = const {},
     this.hiddenChannels = const {},
     this.noPtzChannels = const {},
+    this.rtspMain,
+    this.rtspSub,
   });
 
   final String id;
@@ -61,6 +89,13 @@ class Device {
   /// Canales marcados a mano como "no es PTZ".
   final Set<int> noPtzChannels;
 
+  /// Ruta RTSP propia del flujo principal (ej. "/profile2/media.smp").
+  /// Si está vacía se usa la de la marca. La llena ONVIF o la persona.
+  final String? rtspMain;
+
+  /// Ruta RTSP propia del flujo secundario.
+  final String? rtspSub;
+
   bool get isRecorder => channels > 1;
 
   String channelLabel(int channel) {
@@ -82,6 +117,8 @@ class Device {
     Map<int, String>? channelNames,
     Set<int>? hiddenChannels,
     Set<int>? noPtzChannels,
+    String? rtspMain,
+    String? rtspSub,
   }) {
     return Device(
       id: id,
@@ -97,6 +134,8 @@ class Device {
       channelNames: channelNames ?? this.channelNames,
       hiddenChannels: hiddenChannels ?? this.hiddenChannels,
       noPtzChannels: noPtzChannels ?? this.noPtzChannels,
+      rtspMain: rtspMain ?? this.rtspMain,
+      rtspSub: rtspSub ?? this.rtspSub,
     );
   }
 
@@ -115,6 +154,8 @@ class Device {
           'channelNames': {for (final e in channelNames.entries) '${e.key}': e.value},
         if (hiddenChannels.isNotEmpty) 'hidden': hiddenChannels.toList()..sort(),
         if (noPtzChannels.isNotEmpty) 'noPtz': noPtzChannels.toList()..sort(),
+        if (rtspMain != null && rtspMain!.isNotEmpty) 'rtspMain': rtspMain,
+        if (rtspSub != null && rtspSub!.isNotEmpty) 'rtspSub': rtspSub,
       };
 
   factory Device.fromJson(Map<String, dynamic> json) {
@@ -133,7 +174,7 @@ class Device {
     return Device(
       id: json['id'] as String,
       name: json['name'] as String? ?? 'Equipo',
-      brand: Brand.values.byName(json['brand'] as String? ?? 'hikvision'),
+      brand: Brand.values.asNameMap()[json['brand']] ?? Brand.onvif,
       host: json['host'] as String? ?? '',
       rtspPort: json['rtspPort'] as int? ?? 554,
       httpPort: json['httpPort'] as int? ?? 80,
@@ -143,6 +184,8 @@ class Device {
       channelNames: names,
       hiddenChannels: intSet(json['hidden']),
       noPtzChannels: intSet(json['noPtz']),
+      rtspMain: json['rtspMain'] as String?,
+      rtspSub: json['rtspSub'] as String?,
     );
   }
 }

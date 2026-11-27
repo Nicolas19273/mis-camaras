@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../brands/brands.dart';
 import '../models/device.dart';
+import '../onvif/onvif_client.dart';
 import '../services/camera_http.dart';
 import '../services/device_api.dart';
 
@@ -151,7 +152,7 @@ class HikvisionPtz extends PtzDriver {
 
   final CameraHttp _http;
   final String _base;
-  ({int pan, int tilt, int zoom}) _last = (pan: 0, tilt: 0, zoom: 0);
+  ({int pan, int tilt, int zoom}) _last = (pan: 0.0, tilt: 0.0, zoom: 0.0);
 
   @override
   void move(double pan, double tilt) =>
@@ -161,7 +162,7 @@ class HikvisionPtz extends PtzDriver {
   void zoom(int direction) => _send(0, 0, direction.sign * 60);
 
   @override
-  void stop() => _send(0, 0, 0, force: true);
+  void stop() => _send(0.0, 0.0, 0.0, force: true);
 
   void _send(int pan, int tilt, int zoom, {bool force = false}) {
     final next = (pan: pan, tilt: tilt, zoom: zoom);
@@ -284,3 +285,50 @@ class DahuaPtz extends PtzDriver {
     });
   }
 }
+
+// =============================================================================
+// ONVIF (Vivotek, Axis, Hanwha, Uniview y otras marcas)
+// =============================================================================
+
+/// Pregunta por ONVIF si la cámara tiene PTZ (un perfil con configuración PTZ).
+Future<PtzSupport?> detectOnvifPtz(Device device, int channel) async {
+  if (device.isRecorder) return null; // en grabadores de otras marcas, aún no
+  final client = OnvifClient(device);
+  try {
+    final profile = await client.ptzProfile();
+    if (profile == null) {
+      client.close();
+      return null;
+    }
+    return PtzSupport(panTilt: true, zoom: true, driver: OnvifPtz(client, profile.token));
+  } catch (_) {
+    client.close();
+    return null;
+  }
+}
+
+/// Movimiento continuo por ONVIF: velocidades de -1 a 1.
+class OnvifPtz extends PtzDriver {
+  OnvifPtz(this._client, this._token);
+
+  final OnvifClient _client;
+  final String _token;
+  ({double pan, double tilt, double zoom}) _last = (pan: 0.0, tilt: 0.0, zoom: 0.0);
+
+  @override
+  void move(double pan, double tilt) => _send(pan * 0.8, tilt * 0.8, 0);
+
+  @override
+  void zoom(int direction) => _send(0.0, 0.0, direction.sign * 0.5);
+
+  @override
+  void stop() => _send(0.0, 0.0, 0.0, force: true);
+
+  void _send(double pan, double tilt, double zoom, {bool force = false}) {
+    final next = (pan: pan, tilt: tilt, zoom: zoom);
+    if (!force && next == _last) return;
+    _last = next;
+    enqueue(() => _client.continuousMove(_token, pan, tilt, zoom));
+  }
+}
+

@@ -6,6 +6,11 @@ import '../theme.dart';
 Color brandColor(Brand brand) => switch (brand) {
       Brand.hikvision => AppColors.hikvision,
       Brand.dahua => AppColors.dahua,
+      Brand.vivotek => AppColors.vivotek,
+      Brand.axis => AppColors.axis,
+      Brand.hanwha => AppColors.hanwha,
+      Brand.uniview => AppColors.uniview,
+      Brand.onvif => AppColors.onvif,
     };
 
 /// Círculo con la inicial de la marca.
@@ -27,7 +32,7 @@ class BrandBadge extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       child: Text(
-        brand.label[0],
+        brand.letter,
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.w700,

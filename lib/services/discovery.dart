@@ -36,7 +36,8 @@ class FoundDevice {
 
   /// Junta datos que llegaron por distintos métodos.
   void mergeFrom(FoundDevice o) {
-    brand ??= o.brand;
+    // Una marca concreta gana sobre "Otra (ONVIF)".
+    if (brand == null || (brand == Brand.onvif && o.brand != null)) brand = o.brand;
     if ((model == null || model!.isEmpty) && o.model != null) model = o.model;
     name ??= o.name;
     mac ??= o.mac;
@@ -49,7 +50,8 @@ class FoundDevice {
   }
 }
 
-/// Busca cámaras y grabadores Hikvision y Dahua en la misma red WiFi.
+/// Busca cámaras y grabadores en la misma red WiFi (Hikvision, Dahua y,
+/// por ONVIF, Vivotek, Axis, Hanwha, Uniview y casi cualquier otra marca).
 /// Usa cuatro métodos a la vez, porque no todos los equipos responden a todos:
 /// - SADP: búsqueda propia de Hikvision (la que usa su programa SADP).
 /// - DHIP: búsqueda propia de Dahua (la que usa ConfigTool), puerto 37810.
@@ -332,6 +334,18 @@ Brand? brandFromText(String text) {
       RegExp(r'(^|[^a-z])i?ds-').hasMatch(t)) {
     return Brand.hikvision;
   }
+  if (t.contains('vivotek') || RegExp(r'(^|[^a-z])(fd|ib|fe|md|nd)\d{4}').hasMatch(t)) {
+    return Brand.vivotek;
+  }
+  if (RegExp(r'(^|[^a-z])axis([^a-z]|$)').hasMatch(t)) return Brand.axis;
+  if (t.contains('hanwha') || t.contains('wisenet') || t.contains('samsung techwin') ||
+      RegExp(r'(^|[^a-z0-9])[xqplt][nr][a-z]-\d{4}').hasMatch(t)) {
+    return Brand.hanwha;
+  }
+  if (t.contains('uniview') || RegExp(r'(^|[^a-z])unv([^a-z]|$)').hasMatch(t) ||
+      RegExp(r'(^|[^a-z])(ipc\d{3,4}|nvr\d{3}-)').hasMatch(t)) {
+    return Brand.uniview;
+  }
   if (t.contains('dahua') || t.contains('lorex') || t.contains('amcrest') || t.contains('imou') ||
       RegExp(r'(^|[^a-z])(dh-|dhi-|ipc-h|sd\d|nvr\d|xvr\d|hcvr)').hasMatch(t)) {
     return Brand.dahua;
@@ -448,8 +462,10 @@ FoundDevice? parseOnvif(String xml, String fromIp) {
 
   final hardware = scope('hardware');
   final name = scope('name');
+  final maker = scope('manufacturer') ?? scope('mfr');
   final d = FoundDevice(ip: ip)
-    ..brand = brandFromText('${name ?? ''} ${hardware ?? ''}')
+    // Si no se reconoce, se puede usar igual como "Otra (ONVIF)".
+    ..brand = brandFromText('${maker ?? ''} ${name ?? ''} ${hardware ?? ''}') ?? Brand.onvif
     ..model = hardware
     ..name = name
     ..mac = scope('MAC')

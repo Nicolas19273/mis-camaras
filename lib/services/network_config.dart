@@ -43,12 +43,19 @@ class NetworkConfig {
 
   void close() => _http.close();
 
-  Future<NetSettings> read() =>
-      device.brand == Brand.hikvision ? _readHikvision() : _readDahua();
+  static const unsupportedMessage =
+      'Cambiar la IP desde la app por ahora solo funciona con Hikvision y Dahua. '
+      'En esta marca hazlo desde la página web del equipo.';
+
+  Future<NetSettings> read() async {
+    if (!device.brand.hasFullApi) throw NetworkConfigException(unsupportedMessage);
+    return device.brand == Brand.hikvision ? _readHikvision() : _readDahua();
+  }
 
   /// Aplica la configuración. Si la conexión se corta justo después,
   /// se considera aplicada (el equipo ya cambió de IP).
   Future<void> apply(NetSettings s) async {
+    if (!device.brand.hasFullApi) throw NetworkConfigException(unsupportedMessage);
     try {
       if (device.brand == Brand.hikvision) {
         await _applyHikvision(s);

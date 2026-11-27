@@ -100,14 +100,16 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
         children: [
-          OutlinedButton.icon(
-            onPressed: _importing ? null : _import,
-            icon: _importing
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.download_outlined),
-            label: const Text('Traer nombres del equipo'),
-          ),
-          const SizedBox(height: 12),
+          if (d.brand.hasFullApi) ...[
+            OutlinedButton.icon(
+              onPressed: _importing ? null : _import,
+              icon: _importing
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.download_outlined),
+              label: const Text('Traer nombres del equipo'),
+            ),
+            const SizedBox(height: 12),
+          ],
           for (var ch = 1; ch <= d.channels; ch++)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),

@@ -1,4 +1,5 @@
 import '../models/device.dart';
+import '../onvif/onvif_client.dart';
 import 'camera_http.dart';
 
 /// Datos del equipo leídos por su API.
@@ -31,11 +32,31 @@ class DeviceApi {
 
   bool get _hik => device.brand == Brand.hikvision;
 
-  void close() => _http.close();
+  /// Marcas sin API propia en la app: se usa ONVIF.
+  bool get _onvif => !device.brand.hasFullApi;
+  OnvifClient? _onvifClient;
+  OnvifClient get _ov => _onvifClient ??= OnvifClient(device);
+
+  void close() {
+    _http.close();
+    _onvifClient?.close();
+  }
+
+  Future<DeviceInfo> _onvifInfo() async {
+    try {
+      final i = await _ov.info();
+      return DeviceInfo(model: i.model, firmware: i.firmware, serial: i.serial, type: i.manufacturer);
+    } on OnvifException catch (e) {
+      throw DeviceApiException(e.auth
+          ? 'Usuario o contraseña incorrectos, o sin permiso para esta acción.'
+          : 'El equipo no respondió por ONVIF: ${e.message}');
+    }
+  }
 
   // --- Información -------------------------------------------------------------
 
   Future<DeviceInfo> info() async {
+    if (_onvif) return _onvifInfo();
     if (_hik) {
       final res = await _http.get('/ISAPI/System/deviceInfo');
       _check(res.statusCode);
@@ -73,6 +94,16 @@ class DeviceApi {
   // --- Reiniciar ---------------------------------------------------------------
 
   Future<void> reboot() async {
+    if (_onvif) {
+      try {
+        await _ov.reboot();
+        return;
+      } on OnvifException catch (e) {
+        throw DeviceApiException(e.auth
+            ? 'Usuario o contraseña incorrectos, o sin permiso para esta acción.'
+            : 'El equipo no aceptó el reinicio: ${e.message}');
+      }
+    }
     final res = _hik
         ? await _http.put('/ISAPI/System/reboot', '')
         : await _http.get('/cgi-bin/magicBox.cgi?action=reboot');
@@ -87,6 +118,7 @@ class DeviceApi {
   /// Nombres que el equipo tiene guardados para cada canal (sin los genéricos).
   Future<Map<int, String>> channelNames() async {
     final result = <int, String>{};
+    if (_onvif) return result; // por ahora solo Hikvision y Dahua
     if (_hik) {
       final res = await _http.get('/ISAPI/ContentMgmt/InputProxy/channels');
       if (res.statusCode == 200) {
@@ -121,6 +153,7 @@ class DeviceApi {
 
   Future<String?> channelModel(int channel) async {
     try {
+      if (_onvif) return device.isRecorder ? null : (await _ov.info()).model;
       if (_hik) {
         if (!device.isRecorder) {
           final r = await _http.get('/ISAPI/System/deviceInfo');
@@ -206,6 +239,7 @@ bool? isFixedCameraModel(Brand brand, String model) {
     if (RegExp(r'^I?DS-2(CD|CE|CV|XD|XS|PV)').hasMatch(m)) return true;
     return null;
   }
+  if (brand != Brand.dahua) return null;
   final bare = m.replaceFirst(RegExp(r'^(DHI?[-_])'), '');
   if (RegExp(r'^(SD\d|PTZ)').hasMatch(bare) || bare.contains('-PT')) return false;
   if (RegExp(r'^IPC-(HFW|HDW|HDBW|HFS|HDS|HDPW|HUM|EB|EW|PFW|PDW|PDBW|HF\d|HD\d)').hasMatch(bare)) {

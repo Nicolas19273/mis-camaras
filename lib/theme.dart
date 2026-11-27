@@ -19,6 +19,11 @@ class AppColors {
   // Color de cada marca.
   static const hikvision = Color(0xFFE5484D);
   static const dahua = Color(0xFFF2994A);
+  static const vivotek = Color(0xFF3B82F6);
+  static const axis = Color(0xFFFFD60A);
+  static const hanwha = Color(0xFF14B8A6);
+  static const uniview = Color(0xFF8B5CF6);
+  static const onvif = Color(0xFF94A3B8);
 }
 
 /// Colores principales que se pueden elegir en Ajustes.

@@ -80,7 +80,14 @@ void main() {
     expect(brandFromText('Dahua IPC-HDW2431T'), Brand.dahua);
     expect(brandFromText('Lorex N841'), Brand.dahua);
     expect(brandFromText('DS-7608NI-K2'), Brand.hikvision);
-    expect(brandFromText('Axis M3045'), isNull);
+    expect(brandFromText('Axis M3045'), Brand.axis);
+    expect(brandFromText('VIVOTEK FD9360-H'), Brand.vivotek);
+    expect(brandFromText('XNV-6080R'), Brand.hanwha);
+    expect(brandFromText('Wisenet QNV-7080R'), Brand.hanwha);
+    expect(brandFromText('IPC2124LR3-PF40M-D'), Brand.uniview);
+    expect(brandFromText('NVR301-04LS3'), Brand.uniview);
+    expect(brandFromText('NVR4104HS-P-4KS2'), Brand.dahua);
+    expect(brandFromText('Generic IPCam'), isNull);
   });
 
   test('Huella HTTP', () {

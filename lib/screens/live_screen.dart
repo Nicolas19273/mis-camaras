@@ -385,7 +385,7 @@ class _BrandBar extends StatelessWidget {
                   chip(label: 'Todas · $total', active: selected == null, onTap: () => onSelect(null)),
                   for (final b in brands)
                     chip(
-                      label: '${b.label} · ${counts[b] ?? 0}',
+                      label: '${b.shortLabel} · ${counts[b] ?? 0}',
                       active: selected == b,
                       dot: brandColor(b),
                       onTap: () => onSelect(b),

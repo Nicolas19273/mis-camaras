@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VERSION_BASE: '0.5'
+  VERSION_BASE: '0.6'
 
 jobs:
   apk:

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../brands/brand_adapter.dart';
 import '../brands/brands.dart';
 import '../models/device.dart';
+import '../onvif/onvif_client.dart';
 import '../services/app_store.dart';
 import '../theme.dart';
 import '../widgets/live_video.dart';
@@ -33,9 +34,13 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
   late final TextEditingController _user;
   late final TextEditingController _pass;
   late final TextEditingController _channels;
+  late final TextEditingController _rtspMain;
+  late final TextEditingController _rtspSub;
   late Brand _brand;
   bool _hidePass = true;
   bool _saving = false;
+  bool _detecting = false;
+  bool _showAdvanced = false;
 
   bool get _isEdit => widget.device != null;
 
@@ -51,17 +56,24 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
     _user = TextEditingController(text: d?.username ?? 'admin');
     _pass = TextEditingController(text: d?.password ?? '');
     _channels = TextEditingController(text: '${d?.channels ?? 1}');
+    _rtspMain = TextEditingController(text: d?.rtspMain ?? '');
+    _rtspSub = TextEditingController(text: d?.rtspSub ?? '');
+    _showAdvanced = (d?.rtspMain ?? '').isNotEmpty;
   }
 
   @override
   void dispose() {
-    for (final c in [_name, _host, _rtspPort, _httpPort, _user, _pass, _channels]) {
+    for (final c in [_name, _host, _rtspPort, _httpPort, _user, _pass, _channels, _rtspMain, _rtspSub]) {
       c.dispose();
     }
     super.dispose();
   }
 
   Device _buildDevice() {
+    // Se conserva lo que no está en el formulario (nombres de cámaras,
+    // ocultas, MAC, "no es PTZ"), para no perderlo al editar.
+    final base = widget.device ?? widget.template;
+    String? path(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
     return Device(
       id: widget.device?.id ?? AppStore.newId(),
       name: _name.text.trim(),
@@ -72,7 +84,43 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
       username: _user.text.trim(),
       password: _pass.text,
       channels: int.tryParse(_channels.text.trim()) ?? 1,
+      mac: base?.mac,
+      channelNames: base?.channelNames ?? const {},
+      hiddenChannels: base?.hiddenChannels ?? const {},
+      noPtzChannels: base?.noPtzChannels ?? const {},
+      rtspMain: path(_rtspMain),
+      rtspSub: path(_rtspSub),
     );
+  }
+
+  /// Le pregunta a la cámara por ONVIF cuáles son sus rutas de video.
+  Future<void> _detectOnvif() async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (_host.text.trim().isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('Primero escribe la IP del equipo.')));
+      return;
+    }
+    setState(() => _detecting = true);
+    final client = OnvifClient(_buildDevice());
+    try {
+      final streams = await client.detectStreams();
+      if (!mounted) return;
+      setState(() {
+        _rtspMain.text = streams.main;
+        _rtspSub.text = streams.sub;
+        _rtspPort.text = '${streams.port}';
+        _showAdvanced = true;
+      });
+      messenger.showSnackBar(const SnackBar(content: Text('Listo: la cámara informó sus rutas de video.')));
+    } catch (e) {
+      final text = e is OnvifException
+          ? e.message
+          : 'No respondió por ONVIF. Revisa la IP, el puerto HTTP y que ONVIF esté activado en la cámara.';
+      messenger.showSnackBar(SnackBar(content: Text(text)));
+    } finally {
+      client.close();
+      if (mounted) setState(() => _detecting = false);
+    }
   }
 
   // --- Validaciones -------------------------------------------------------
@@ -161,6 +209,62 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
 
   // --- Interfaz -----------------------------------------------------------
 
+  /// Rutas de video propias (para cámaras que no usan la ruta típica de su marca).
+  Widget _advancedSection() {
+    final open = _showAdvanced || _brand == Brand.onvif;
+    final detectButton = OutlinedButton.icon(
+      onPressed: _detecting ? null : _detectOnvif,
+      icon: _detecting
+          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.travel_explore),
+      label: Text(_detecting ? 'Preguntando a la cámara…' : 'Detectar video con ONVIF'),
+      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!_brand.hasFullApi) ...[detectButton, const SizedBox(height: 4)],
+        if (_brand != Brand.onvif)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _showAdvanced = !_showAdvanced),
+              icon: Icon(open ? Icons.expand_less : Icons.expand_more),
+              label: const Text('Rutas de video (avanzado)'),
+            ),
+          ),
+        if (open) ...[
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _rtspMain,
+            decoration: fieldDecoration(
+              'Ruta principal',
+              hint: _brand == Brand.onvif ? '/stream1' : adapterFor(_brand).rtspPath(1, StreamQuality.main),
+              helper: 'Vacía = la típica de la marca. Solo para cámaras de 1 canal.',
+            ),
+            autocorrect: false,
+            keyboardType: TextInputType.url,
+            validator: (v) => _brand == Brand.onvif && (v == null || v.trim().isEmpty)
+                ? 'Toca "Detectar video con ONVIF" o escribe la ruta'
+                : null,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _rtspSub,
+            decoration: fieldDecoration(
+              'Ruta secundaria (liviana)',
+              hint: _brand == Brand.onvif ? '/stream2' : adapterFor(_brand).rtspPath(1, StreamQuality.sub),
+              helper: 'Para la cuadrícula. Vacía = usa la principal.',
+            ),
+            autocorrect: false,
+            keyboardType: TextInputType.url,
+          ),
+          if (_brand.hasFullApi) ...[const SizedBox(height: 12), detectButton],
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const gap = SizedBox(height: 14);
@@ -172,15 +276,37 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            SegmentedButton<Brand>(
-              segments: [
-                for (final b in Brand.values)
-                  ButtonSegment(value: b, label: Text(b.label)),
-              ],
-              selected: {_brand},
-              showSelectedIcon: false,
-              onSelectionChanged: (s) => setState(() => _brand = s.first),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('Marca', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
             ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final b in Brand.values)
+                  ChoiceChip(
+                    label: Text(b.label),
+                    selected: _brand == b,
+                    showCheckmark: false,
+                    onSelected: (_) => setState(() {
+                      _brand = b;
+                      if (b == Brand.onvif) _showAdvanced = true;
+                    }),
+                  ),
+              ],
+            ),
+            if (!_brand.hasFullApi) ...[
+              const SizedBox(height: 8),
+              Text(
+                _brand == Brand.onvif
+                    ? 'Funciona con casi cualquier cámara compatible con ONVIF. '
+                        'Toca "Detectar con ONVIF" para que la app encuentre el video.'
+                    : 'Video y PTZ por ONVIF. Cambiar la IP y leer nombres de cámaras '
+                        'por ahora solo está para Hikvision y Dahua.',
+                style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5, height: 1.35),
+              ),
+            ],
             gap,
             TextFormField(
               controller: _name,
@@ -250,9 +376,11 @@ class _DeviceFormScreenState extends State<DeviceFormScreen> {
               keyboardType: TextInputType.number,
               validator: _validateChannels,
             ),
+            const SizedBox(height: 8),
+            _advancedSection(),
             const SizedBox(height: 20),
             _UrlPreview(
-              listenable: Listenable.merge([_host, _rtspPort, _user, _pass]),
+              listenable: Listenable.merge([_host, _rtspPort, _user, _pass, _rtspMain, _channels]),
               urlBuilder: () => adapterFor(_brand)
                   .rtspUrl(_buildDevice(), 1, StreamQuality.main, hidePassword: true),
             ),

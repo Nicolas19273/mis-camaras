@@ -1,6 +1,17 @@
 # Mis Cámaras
 
-Una app propia para ver cámaras **Hikvision** y **Dahua** con la misma interfaz.
+Una app propia para ver cámaras **Hikvision**, **Dahua**, **Vivotek**, **Axis**,
+**Hanwha Wisenet**, **Uniview** y casi cualquier otra marca compatible con **ONVIF**,
+todas con la misma interfaz.
+
+| Marca | Video | PTZ | Cambiar IP / nombres de cámaras |
+|---|---|---|---|
+| Hikvision, Dahua | ✓ | ✓ (API propia) | ✓ |
+| Vivotek, Axis, Hanwha, Uniview | ✓ | ✓ (ONVIF, cámaras sueltas) | Desde la web del equipo |
+| Otra (ONVIF) | ✓ (la cámara informa la ruta) | ✓ (ONVIF) | Desde la web del equipo |
+
+En las marcas por ONVIF hay que tener **ONVIF activado** en la cámara (en algunas
+viene apagado o pide crear un usuario ONVIF aparte).
 Está hecha en Flutter (Android y iPhone con el mismo código).
 
 ## Instalar en Android (sin computador)
@@ -39,7 +50,7 @@ y en *Ajustes*). Toca **Actualizar ahora**:
 - **Pantalla completa** por cámara: desliza para pasar a la siguiente, zoom con los
   dedos, HD/SD, sonido, reloj y etiqueta *EN VIVO*.
 - **Equipos:** agregar, editar, eliminar y **ordenar** (mantén presionado y arrastra).
-- **Buscar en mi red:** encuentra solos los equipos Hikvision y Dahua del WiFi
+- **Buscar en mi red:** encuentra solos los equipos del WiFi (todas las marcas)
   (SADP, búsqueda Dahua, ONVIF y rastreo HTTP). Eliges cuáles, escribes la contraseña
   una vez y la app detecta modelo y cantidad de cámaras de cada NVR.
 - **Herramientas del equipo** (Equipos → editar → *Herramientas*):
@@ -101,7 +112,10 @@ lib/
 │   ├── brand_adapter.dart    Lo común a todas las marcas
 │   ├── hikvision.dart        Todo lo propio de Hikvision
 │   ├── dahua.dart            Todo lo propio de Dahua
+│   ├── vivotek.dart, axis.dart, hanwha.dart, uniview.dart
+│   ├── generic.dart          Otra marca: usa las rutas que informa ONVIF
 │   └── brands.dart           Elige el adaptador según la marca
+├── onvif/onvif_client.dart   ONVIF: video, PTZ, información y reinicio
 ├── services/
 │   ├── app_store.dart        Guarda equipos y preferencias en el teléfono
 │   ├── discovery.dart        Busca equipos en el WiFi (SADP, Dahua, ONVIF, HTTP)
