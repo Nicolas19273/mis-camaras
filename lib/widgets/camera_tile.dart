@@ -112,7 +112,8 @@ class _CameraTileState extends State<CameraTile> {
             left: 6,
             right: 6,
             top: 5,
-            child: Row(
+            child: LayoutBuilder(
+              builder: (context, box) => Row(
               children: [
                 if (widget.showLabel) ...[
                   Container(
@@ -143,11 +144,13 @@ class _CameraTileState extends State<CameraTile> {
                   RecBadge(
                     device: camera.recordingSource.device,
                     channel: camera.recordingSource.channel,
+                    compact: box.maxWidth < 170,
                   ),
                   const SizedBox(width: 6),
                 ],
                 if (widget.active) StatusDot(status: _status, size: 6),
               ],
+            ),
             ),
           ),
         ],

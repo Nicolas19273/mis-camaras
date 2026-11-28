@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../widgets/camera_tile.dart';
 import '../widgets/groups.dart';
 import '../widgets/layout_chip.dart';
+import '../widgets/paged_grid.dart';
 import 'camera_view_screen.dart';
 import 'group_editor_screen.dart';
 import 'mosaic_screen.dart';
@@ -135,7 +136,7 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
         ];
         final waiting = all.length - cameras.length;
         final columns = store.gridColumns;
-        final quality = store.gridHd ? StreamQuality.main : StreamQuality.sub;
+        final quality = (store.gridHd || columns == 1) ? StreamQuality.main : StreamQuality.sub;
 
         return Scaffold(
           appBar: AppBar(
@@ -236,16 +237,10 @@ class _GroupViewScreenState extends State<GroupViewScreen> {
                       ),
                     ),
                     Expanded(
-                      child: GridView.builder(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          mainAxisSpacing: 2,
-                          crossAxisSpacing: 2,
-                          childAspectRatio: 16 / 9,
-                        ),
-                        itemCount: cameras.length,
-                        itemBuilder: (context, index) {
+                      child: PagedCameraGrid(
+                        count: cameras.length,
+                        columns: columns,
+                        tileBuilder: (context, index) {
                           final camera = cameras[index];
                           return CameraTile(
                             key: ValueKey('grupo-${group.id}-${camera.device.id}-${camera.channel}'),

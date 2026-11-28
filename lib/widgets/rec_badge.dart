@@ -8,10 +8,13 @@ import '../theme.dart';
 /// "● REC" sobre el video: rojo parpadeando si está grabando, aro si está
 /// lista para grabar (con movimiento), y "SIN GRABAR" si hay un problema.
 class RecBadge extends StatelessWidget {
-  const RecBadge({super.key, required this.device, required this.channel});
+  const RecBadge({super.key, required this.device, required this.channel, this.compact = false});
 
   final Device device;
   final int channel;
+
+  /// Cuadro chico: solo el punto, para que quepa el nombre de la cámara.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +24,7 @@ class RecBadge extends StatelessWidget {
       builder: (context, child) {
         final state = monitor.stateOf(device, channel);
         return switch (state) {
-          RecState.recording => const _Pill(dot: _BlinkingDot(), text: 'REC'),
+          RecState.recording => _Pill(dot: const _BlinkingDot(), text: compact ? null : 'REC'),
           RecState.armed => _Pill(
               dot: Container(
                 width: 7,
@@ -31,12 +34,12 @@ class RecBadge extends StatelessWidget {
                   border: Border.all(color: AppColors.danger, width: 1.5),
                 ),
               ),
-              text: 'REC',
+              text: compact ? null : 'REC',
               muted: true,
             ),
-          RecState.problem => const _Pill(
-              dot: Icon(Icons.warning_amber_rounded, size: 10, color: AppColors.connecting),
-              text: 'SIN GRABAR',
+          RecState.problem => _Pill(
+              dot: const Icon(Icons.warning_amber_rounded, size: 10, color: AppColors.connecting),
+              text: compact ? null : 'SIN GRABAR',
               color: AppColors.connecting,
             ),
           _ => const SizedBox.shrink(),
@@ -59,7 +62,7 @@ class _Pill extends StatelessWidget {
   const _Pill({required this.dot, required this.text, this.muted = false, this.color});
 
   final Widget dot;
-  final String text;
+  final String? text;
   final bool muted;
   final Color? color;
 
@@ -75,9 +78,10 @@ class _Pill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           dot,
-          const SizedBox(width: 3),
-          Text(
-            text,
+          if (text != null) ...[
+            const SizedBox(width: 3),
+            Text(
+            text!,
             style: TextStyle(
               color: color ?? (muted ? Colors.white60 : Colors.white),
               fontSize: 9,
@@ -85,6 +89,7 @@ class _Pill extends StatelessWidget {
               letterSpacing: 0.6,
             ),
           ),
+          ],
         ],
       ),
     );

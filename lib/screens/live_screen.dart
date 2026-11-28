@@ -17,6 +17,7 @@ import '../widgets/groups.dart';
 import '../widgets/layout_chip.dart';
 import '../widgets/status_dot.dart';
 import '../widgets/network_sheet.dart';
+import '../widgets/paged_grid.dart';
 import '../widgets/update_sheet.dart';
 import 'camera_view_screen.dart';
 import 'device_form_screen.dart';
@@ -252,35 +253,6 @@ class _LiveScreenState extends State<LiveScreen> {
     );
   }
 
-  /// Mosaico separado por marca: un título y una cuadrícula por marca.
-  Widget _groupedGrid(AppStore store, List<CameraRef> cameras, int columns, StreamQuality quality) {
-    final delegate = SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: columns,
-      mainAxisSpacing: 2,
-      crossAxisSpacing: 2,
-      childAspectRatio: 16 / 9,
-    );
-    final slivers = <Widget>[];
-    var offset = 0;
-    for (final brand in store.brands) {
-      final count = cameras.where((c) => c.device.brand == brand).length;
-      if (count == 0) continue;
-      final start = offset;
-      slivers
-        ..add(SliverToBoxAdapter(child: _BrandHeader(brand: brand, count: count)))
-        ..add(SliverGrid(
-          gridDelegate: delegate,
-          delegate: SliverChildBuilderDelegate(
-            (context, i) => _tile(store, cameras, start + i, quality),
-            childCount: count,
-          ),
-        ));
-      offset += count;
-    }
-    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 12)));
-    return CustomScrollView(slivers: slivers);
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -293,7 +265,8 @@ class _LiveScreenState extends State<LiveScreen> {
         final filter = brands.contains(store.brandFilter) ? store.brandFilter : null;
         final grouped = store.groupByBrand && filter == null && brands.length > 1;
         final columns = store.gridColumns;
-        final quality = store.gridHd ? StreamQuality.main : StreamQuality.sub;
+        // Una sola cámara en pantalla: calidad alta.
+        final quality = (store.gridHd || columns == 1) ? StreamQuality.main : StreamQuality.sub;
 
         return Scaffold(
           appBar: AppBar(
@@ -354,19 +327,16 @@ class _LiveScreenState extends State<LiveScreen> {
                         onAdd: () => _pushPaused(DeviceFormScreen(store: store)),
                         onDiscover: () => _pushPaused(DiscoveryScreen(store: store)),
                       )
-                    : grouped
-                        ? _groupedGrid(store, cameras, columns, quality)
-                        : GridView.builder(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          mainAxisSpacing: 2,
-                          crossAxisSpacing: 2,
-                          childAspectRatio: 16 / 9,
-                        ),
-                        itemCount: cameras.length,
-                        itemBuilder: (context, index) =>
-                            _tile(store, cameras, index, quality),
+                    // Como en el NVR: "4" = 4 cámaras (2×2), "9" = 3×3, "16" = 4×4;
+                    // si hay más, se desliza de lado para ver la página siguiente.
+                    : PagedCameraGrid(
+                        count: cameras.length,
+                        columns: columns,
+                        tileBuilder: (context, index) => _tile(store, cameras, index, quality),
+                        sectionOf: grouped ? (i) => cameras[i].device.brand : null,
+                        sectionHeader: grouped
+                            ? (section, n) => _BrandHeader(brand: section as Brand, count: n)
+                            : null,
                       ),
               ),
             ],
