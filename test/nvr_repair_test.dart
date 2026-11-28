@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mis_camaras/models/device.dart';
 import 'package:mis_camaras/screens/nvr_repair_screen.dart';
+import 'package:mis_camaras/services/discovery.dart';
+import 'package:mis_camaras/services/link_doctor.dart';
 import 'package:mis_camaras/services/network_config.dart';
 import 'package:mis_camaras/services/nvr_channels.dart';
 
@@ -77,6 +79,80 @@ void main() {
         diagnoseNvrLink(channel: ch, camera: cam, cameraNet: net, nvrNet: nvrNet, cameraTcpPort: 37777),
         NvrLinkIssue.unknown,
       );
+    });
+  });
+
+  group('Reparación a fondo', () {
+    test('Si se ve y se corta: IP nueva libre (en vez de solo revisar la IP)', () {
+      final plan = buildRepairPlan(
+        issue: NvrLinkIssue.unknown,
+        conflictSuspected: false,
+        dropsAfterSeconds: true,
+        protocolWrong: false,
+        nvrConnected: false,
+        cameraKnown: true,
+      );
+      expect(plan, [RepairStep.newFreeIp, RepairStep.credentials, RepairStep.reconnect]);
+    });
+
+    test('IP cambiada sin cortes: usa la IP actual; con NVR ya conectado no toca la contraseña', () {
+      final plan = buildRepairPlan(
+        issue: NvrLinkIssue.ipChanged,
+        conflictSuspected: false,
+        dropsAfterSeconds: false,
+        protocolWrong: true,
+        nvrConnected: true,
+        cameraKnown: true,
+      );
+      expect(plan, [RepairStep.useCameraIp, RepairStep.fixProtocol, RepairStep.reconnect]);
+    });
+
+    test('Red mal puesta', () {
+      final plan = buildRepairPlan(
+        issue: NvrLinkIssue.badGateway,
+        conflictSuspected: false,
+        dropsAfterSeconds: false,
+        protocolWrong: false,
+        nvrConnected: null,
+        cameraKnown: true,
+      );
+      expect(plan.first, RepairStep.fixCameraNetwork);
+    });
+
+    test('Huella de la respuesta y usuarios conectados', () {
+      expect(
+        httpFingerprint(401, {'www-authenticate': 'Digest realm="Login to 6J0A1234", nonce="x"', 'server': 'Webs'}),
+        '401|Login to 6J0A1234|Webs',
+      );
+      const body = 'users[0].name=admin\nusers[0].ip=192.168.1.108\nusers[1].name=admin\nusers[1].ip=192.168.1.30\n';
+      expect(parseDahuaActiveUsers(body), ['192.168.1.108', '192.168.1.30']);
+    });
+
+    test('IPs candidatas: primero las altas y sin las usadas', () {
+      final list = freeIpCandidates('192.168.1', {'192.168.1.200'});
+      expect(list.first, '192.168.1.201');
+      expect(list.contains('192.168.1.200'), isFalse);
+      expect(list.last, '192.168.1.149');
+    });
+
+    test('Dos MAC en la misma IP = conflicto', () {
+      final a = FoundDevice(ip: '192.168.1.111')..mac = 'AA:BB:CC:00:11:22';
+      a.addMac(a.mac);
+      final b = FoundDevice(ip: '192.168.1.111')..mac = 'aa-bb-cc-00-11-99';
+      a.mergeFrom(b);
+      expect(a.ipConflict, isTrue);
+      final c = FoundDevice(ip: '192.168.1.112')..mac = 'AA:BB:CC:00:11:22';
+      c.addMac(c.mac);
+      c.mergeFrom(FoundDevice(ip: '192.168.1.112')..mac = 'aabbcc001122');
+      expect(c.ipConflict, isFalse);
+    });
+
+    test('Protocolo: cámara Hikvision en NVR Dahua con protocolo propio', () {
+      const hik = Device(id: 'h', name: 'H', brand: Brand.hikvision, host: '192.168.1.50');
+      const ch1 = NvrChannel(channel: 1, address: '192.168.1.50', key: 'k', protocol: 'Dahua2');
+      const ch2 = NvrChannel(channel: 2, address: '192.168.1.51', key: 'k2', protocol: 'Onvif');
+      expect(suggestedProtocol(ch1, hik, Brand.dahua, const [ch1, ch2]), 'Onvif');
+      expect(suggestedProtocol(ch2, hik, Brand.dahua, const [ch1, ch2]), isNull);
     });
   });
 }

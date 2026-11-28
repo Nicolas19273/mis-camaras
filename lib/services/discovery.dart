@@ -32,10 +32,29 @@ class FoundDevice {
   /// Cómo se encontró: SADP, Dahua, ONVIF o HTTP.
   final Set<String> sources = {};
 
+  /// Todas las MAC que respondieron con esta IP. Más de una = dos aparatos
+  /// con la misma IP (conflicto: se pelean la dirección y se cortan).
+  final Set<String> macs = {};
+
+  bool get ipConflict => macs.length > 1;
+
+  static String _cleanMac(String m) => m.toLowerCase().replaceAll(RegExp('[^0-9a-f]'), '');
+
+  void addMac(String? m) {
+    if (m == null) return;
+    final c = _cleanMac(m);
+    if (c.length == 12 && c != '000000000000') macs.add(c);
+  }
+
   String get title => model?.isNotEmpty == true ? model! : (name ?? 'Equipo $ip');
 
   /// Junta datos que llegaron por distintos métodos.
   void mergeFrom(FoundDevice o) {
+    addMac(mac);
+    for (final m in o.macs) {
+      addMac(m);
+    }
+    addMac(o.mac);
     // Una marca concreta gana sobre "Otra (ONVIF)".
     if (brand == null || (brand == Brand.onvif && o.brand != null)) brand = o.brand;
     if ((model == null || model!.isEmpty) && o.model != null) model = o.model;
@@ -130,6 +149,7 @@ class DiscoveryService {
     if (_stopped || d.ip.isEmpty || d.ip == localIp) return;
     final existing = _found[d.ip];
     if (existing == null) {
+      d.addMac(d.mac);
       _found[d.ip] = d;
     } else {
       existing.mergeFrom(d);
