@@ -99,8 +99,28 @@ class NvrChannels {
     return parseDahuaNvrChannels(r.body);
   }
 
-  /// Cambia la IP (y opcionalmente puerto, usuario y contraseña) de un canal.
+  static const refusedMessage = 'El NVR respondió "OK" pero no guardó el cambio (algunos NVR Dahua no '
+      'dejan cambiar sus cámaras desde fuera).';
+
+  /// Cambia la IP (y opcionalmente puerto, usuario, contraseña o protocolo) de
+  /// un canal y lo vuelve a leer para confirmar que de verdad quedó guardado.
   Future<void> update(NvrChannel ch,
+      {String? address, int? port, String? user, String? password, String? protocol}) async {
+    await _write(ch, address: address, port: port, user: user, password: password, protocol: protocol);
+    if (address == null && port == null && protocol == null && user == null) return;
+    NvrChannel? after;
+    for (final c in await list()) {
+      if (c.channel == ch.channel) after = c;
+    }
+    if (after == null) throw NvrChannelException(refusedMessage);
+    final saved = (address == null || after.address == address) &&
+        (port == null || after.port == null || after.port == port) &&
+        (protocol == null || after.protocol == null || after.protocol == protocol) &&
+        (user == null || after.userName == null || after.userName == user);
+    if (!saved) throw NvrChannelException(refusedMessage);
+  }
+
+  Future<void> _write(NvrChannel ch,
       {String? address, int? port, String? user, String? password, String? protocol}) async {
     if (nvr.brand == Brand.hikvision) {
       final path = '/ISAPI/ContentMgmt/InputProxy/channels/${ch.key}';
@@ -135,7 +155,7 @@ class NvrChannels {
   Future<void> reconnect(NvrChannel ch) async {
     if (nvr.brand == Brand.hikvision) {
       // En Hikvision, volver a guardar el canal lo reconecta.
-      await update(ch);
+      await _write(ch);
       return;
     }
     for (final on in [false, true]) {

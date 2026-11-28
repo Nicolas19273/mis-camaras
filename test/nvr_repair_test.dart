@@ -107,6 +107,20 @@ void main() {
       expect(plan, [RepairStep.useCameraIp, RepairStep.fixProtocol, RepairStep.reconnect]);
     });
 
+    test('Cámara movida y la IP del NVR libre: devolverla ahí (no depende del NVR)', () {
+      final plan = buildRepairPlan(
+        issue: NvrLinkIssue.ipChanged,
+        conflictSuspected: false,
+        dropsAfterSeconds: true,
+        protocolWrong: false,
+        nvrConnected: false,
+        cameraKnown: true,
+        nvrAddressFree: true,
+      );
+      expect(plan.first, RepairStep.moveCameraToNvrIp);
+      expect(plan.contains(RepairStep.newFreeIp), isFalse);
+    });
+
     test('Red mal puesta', () {
       final plan = buildRepairPlan(
         issue: NvrLinkIssue.badGateway,

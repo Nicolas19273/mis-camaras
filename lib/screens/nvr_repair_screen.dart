@@ -47,7 +47,16 @@ NvrLinkIssue diagnoseNvrLink({
 }
 
 /// Pasos que puede hacer la reparación.
-enum RepairStep { useCameraIp, fixCameraNetwork, newFreeIp, fixPort, fixProtocol, credentials, reconnect }
+enum RepairStep {
+  moveCameraToNvrIp,
+  useCameraIp,
+  fixCameraNetwork,
+  newFreeIp,
+  fixPort,
+  fixProtocol,
+  credentials,
+  reconnect,
+}
 
 /// Arma el plan de reparación según lo que se encontró (función pura).
 List<RepairStep> buildRepairPlan({
@@ -57,12 +66,19 @@ List<RepairStep> buildRepairPlan({
   required bool protocolWrong,
   required bool? nvrConnected,
   required bool cameraKnown,
+  bool? nvrAddressFree,
 }) {
   if (!cameraKnown) return const [RepairStep.reconnect];
   final steps = <RepairStep>[];
+  // La cámara está en otra IP y la que espera el NVR está libre: lo más
+  // seguro es devolver la cámara a esa IP (no depende de que el NVR acepte
+  // cambios desde fuera, cosa que muchos NVR Dahua no hacen).
+  final backToNvrIp = issue == NvrLinkIssue.ipChanged && nvrAddressFree == true;
   // Una IP nueva y libre arregla a la vez: IP repetida, IP cambiada y red mal puesta.
-  final newIp = conflictSuspected || dropsAfterSeconds;
-  if (newIp) {
+  final newIp = !backToNvrIp && (conflictSuspected || dropsAfterSeconds);
+  if (backToNvrIp) {
+    steps.add(RepairStep.moveCameraToNvrIp);
+  } else if (newIp) {
     steps.add(RepairStep.newFreeIp);
   } else {
     if (issue == NvrLinkIssue.otherSubnet || issue == NvrLinkIssue.badGateway) {
@@ -126,6 +142,17 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
   List<FoundDevice> _scanAll = [];
   List<String>? _activeUsers;
   bool _analyzed = false;
+
+  /// Si la cámara está en otra IP: ¿la IP que espera el NVR está libre?
+  bool? _nvrAddressFree;
+
+  /// Instrucciones para hacer el cambio a mano en el NVR (si el NVR no lo
+  /// acepta desde la app).
+  String? _manual;
+
+  /// IP libre encontrada, para moverla a mano si el NVR no acepta cambios.
+  String? _freeIp;
+  String? _manualMoveIp;
 
   // Reparación.
   final _enabled = <RepairStep>{};
@@ -294,12 +321,17 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
       _probeDone = 0;
       _scanConflict = null;
       _activeUsers = null;
+      _nvrAddressFree = null;
       _final = null;
     });
     final cam = _camera;
     if (cam != null) {
       final users = await LinkDoctor.activeUsers(cam);
       if (mounted) setState(() => _activeUsers = users);
+      if (cam.host != ch.address) {
+        final busy = await LinkDoctor.ipBusy(ch.address);
+        if (mounted) setState(() => _nvrAddressFree = !busy);
+      }
     }
     final probe = await LinkDoctor.probe(
       ch.address,
@@ -376,6 +408,7 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
       protocolWrong: _protocolFix != null,
       nvrConnected: _nvrConnected,
       cameraKnown: _camera != null,
+      nvrAddressFree: _nvrAddressFree,
     );
   }
 
@@ -388,6 +421,9 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
       _log.clear();
       _final = null;
       _finalOk = null;
+      _manual = null;
+      _manualMoveIp = null;
+      _freeIp = null;
     });
     for (final step in steps) {
       final line = _Line(_Lvl.wait, _stepTitle(step));
@@ -402,6 +438,12 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
         setState(() {
           line.level = _Lvl.bad;
           line.text = '${_stepTitle(step)}: $e';
+          if (e is NvrChannelException) {
+            _manual = _manualSteps(step);
+            if (step == RepairStep.newFreeIp && _freeIp != null && _freeIp != _camera?.host) {
+              _manualMoveIp = _freeIp;
+            }
+          }
         });
       }
     }
@@ -454,8 +496,11 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
             'cámara (a veces falla al prenderse la luz infrarroja de noche, porque consume más).';
       } else {
         _finalOk = false;
-        _final = 'El NVR todavía no se conecta. Toca "Analizar de nuevo". Si sigue igual, borra la cámara '
-            'en el NVR y vuelve a agregarla desde su búsqueda de dispositivos.';
+        _final = _manual != null
+            ? 'El NVR no aceptó el cambio desde la app. Hazlo en el monitor del NVR con los datos de abajo '
+                '(toma 2 minutos) y después toca "Analizar de nuevo".'
+            : 'El NVR todavía no se conecta. Toca "Analizar de nuevo". Si sigue igual, borra la cámara en el '
+                'NVR y vuelve a agregarla desde su búsqueda de dispositivos.';
       }
     });
     await _load(analyze: false);
@@ -510,7 +555,27 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
     }
   }
 
+  /// Qué poner a mano en el NVR para ese paso.
+  String _manualSteps(RepairStep step) {
+    final cam = _camera;
+    final ch = _selected;
+    final name = ch == null ? 'la cámara' : '"${_title(ch)}" (canal ${ch.channel})';
+    final values = <String>[
+      if (cam != null) 'IP: ${cam.host}',
+      if (step == RepairStep.fixPort && _camTcpPort != null) 'Puerto: $_camTcpPort'
+      else if (ch?.port != null) 'Puerto: ${ch!.port}',
+      if (step == RepairStep.fixProtocol && _protocolFix != null) 'Protocolo: $_protocolFix',
+      if (cam != null) 'Usuario: ${cam.username}',
+      if (cam != null) 'Contraseña: la misma que usas en la app para esta cámara',
+    ];
+    return 'En el monitor del NVR: clic derecho → Menú principal → Cámara → Lista de cámaras '
+        '(o "Registro" / "Dispositivo remoto"). En $name toca el lápiz (editar) y pon:\n'
+        '${values.map((v) => '• $v').join('\n')}\n'
+        'Guarda con OK. En 1 minuto el punto de estado debería ponerse verde.';
+  }
+
   String _stepTitle(RepairStep s) => switch (s) {
+        RepairStep.moveCameraToNvrIp => 'Devolver la cámara a la IP que espera el NVR',
         RepairStep.newFreeIp => 'Dar a la cámara una IP nueva, libre y fija',
         RepairStep.useCameraIp => 'Poner en el NVR la IP actual de la cámara',
         RepairStep.fixCameraNetwork => 'Igualar la red de la cámara con la del NVR',
@@ -524,6 +589,9 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
     final cam = _camera;
     final ch = _selected;
     return switch (s) {
+      RepairStep.moveCameraToNvrIp =>
+        'El NVR la busca en ${ch?.address} y esa IP está libre: se la deja fija a la cámara. No depende de '
+            'que el NVR acepte cambios desde la app.',
       RepairStep.newFreeIp =>
         'Busca una IP que nadie use (probándola varias veces), se la deja fija a la cámara con la red del NVR '
             'y se la pone al NVR. Arregla la IP repetida, que es lo que hace que aparezca y se corte.',
@@ -541,6 +609,8 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
     final ch = _selected!;
     final cam = _camera;
     switch (step) {
+      case RepairStep.moveCameraToNvrIp:
+        return _moveCameraTo(ch.address, line);
       case RepairStep.newFreeIp:
         return _moveToFreeIp(line);
       case RepairStep.useCameraIp:
@@ -603,7 +673,79 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
     }
   }
 
-  /// Le da a la cámara una IP libre y fija, y se la pone al NVR y a la app.
+  /// Cambia la IP de la cámara (fija) y espera a que responda ahí.
+  Future<void> _setCameraIp(Device cam, String ip, _Line line) async {
+    if (!cam.brand.hasFullApi) {
+      throw NetworkConfigException('Cambiar la IP desde la app solo funciona con cámaras Hikvision y Dahua.');
+    }
+    final subnet = ip.substring(0, ip.lastIndexOf('.'));
+    final mask = _nvrNet?.mask ?? _camNet?.mask ?? '255.255.255.0';
+    final gateway = _nvrNet?.gateway ?? _camNet?.gateway ?? '$subnet.1';
+    if (mounted) setState(() => line.text = 'Poniéndole a la cámara la IP $ip…');
+    final cfg = NetworkConfig(cam);
+    try {
+      await cfg.read();
+      await cfg.apply(NetSettings(dhcp: false, ip: ip, mask: mask, gateway: gateway));
+    } finally {
+      cfg.close();
+    }
+    if (mounted) setState(() => line.text = 'Esperando que la cámara responda en $ip…');
+    final ok = await NetworkConfig.waitFor(cam, ip, timeout: const Duration(seconds: 90));
+    if (!ok) {
+      throw NetworkConfigException(
+          'La cámara no respondió en $ip. Búscala con "Buscar equipo perdido" en sus Herramientas.');
+    }
+    final moved = cam.copyWith(host: ip);
+    await store.saveDevice(moved);
+    _camera = moved;
+  }
+
+  /// Primera parte del arreglo a mano: la cámara pasa a la IP libre y se
+  /// muestra qué poner en el NVR.
+  Future<void> _moveForManual() async {
+    final ip = _manualMoveIp;
+    final cam = _camera;
+    if (ip == null || cam == null) return;
+    final line = _Line(_Lvl.wait, 'Moviendo la cámara a $ip…');
+    setState(() {
+      _repairing = true;
+      _log.add(line);
+    });
+    try {
+      if (await LinkDoctor.ipBusy(ip)) {
+        throw NetworkConfigException('La IP $ip ya no está libre. Toca "Analizar de nuevo".');
+      }
+      await _setCameraIp(cam, ip, line);
+      setState(() {
+        line.level = _Lvl.ok;
+        line.text = 'La cámara ya está en $ip (fija). Ahora pon esa IP en el NVR:';
+        _manualMoveIp = null;
+        _manual = _manualSteps(RepairStep.useCameraIp);
+        _final = 'Falta la parte 2: cambia la IP en el NVR como dice arriba y luego toca "Analizar de nuevo".';
+        _finalOk = null;
+      });
+    } catch (e) {
+      setState(() {
+        line.level = _Lvl.bad;
+        line.text = '$e';
+      });
+    } finally {
+      if (mounted) setState(() => _repairing = false);
+    }
+  }
+
+  /// Deja la cámara en la IP que el NVR ya tiene guardada.
+  Future<String> _moveCameraTo(String ip, _Line line) async {
+    final cam = _camera!;
+    if (await LinkDoctor.ipBusy(ip)) {
+      throw NetworkConfigException('La IP $ip ya la está usando otro aparato.');
+    }
+    await _setCameraIp(cam, ip, line);
+    return 'La cámara volvió a $ip (fija), justo donde la busca el NVR.';
+  }
+
+  /// IP nueva, libre y fija: primero se cambia en el NVR (y se confirma que lo
+  /// guardó); solo entonces se cambia en la cámara. Si algo falla, se deshace.
   Future<String> _moveToFreeIp(_Line line) async {
     final cam = _camera!;
     final nvr = _nvr!;
@@ -629,28 +771,23 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
       if (mounted) setState(() => line.text = 'Buscando una IP libre… probando $candidate');
     });
     if (ip == null) throw NetworkConfigException('No encontré una IP libre en la red $subnet.x.');
+    _freeIp = ip;
 
-    final mask = _nvrNet?.mask ?? _camNet?.mask ?? '255.255.255.0';
-    final gateway = _nvrNet?.gateway ?? _camNet?.gateway ?? '$subnet.1';
-    if (mounted) setState(() => line.text = 'Poniéndole a la cámara la IP $ip…');
-    final cfg = NetworkConfig(cam);
-    try {
-      await cfg.read();
-      await cfg.apply(NetSettings(dhcp: false, ip: ip, mask: mask, gateway: gateway));
-    } finally {
-      cfg.close();
-    }
-    if (mounted) setState(() => line.text = 'Esperando que la cámara responda en $ip…');
-    final ok = await NetworkConfig.waitFor(cam, ip, timeout: const Duration(seconds: 90));
-    if (!ok) {
-      throw NetworkConfigException(
-          'La cámara no respondió en $ip. Búscala con "Buscar equipo perdido" en sus Herramientas.');
-    }
-    final moved = cam.copyWith(host: ip);
-    await store.saveDevice(moved);
-    _camera = moved;
-
+    // 1. El NVR primero: si no acepta el cambio, no se toca la cámara.
+    if (mounted) setState(() => line.text = 'Cambiando la IP en el NVR a $ip…');
+    final oldAddress = ch.address;
     await _updateChannel(address: ip);
+
+    // 2. La cámara. Si no queda bien, el NVR vuelve a la IP anterior.
+    try {
+      await _setCameraIp(cam, ip, line);
+    } catch (e) {
+      try {
+        await _updateChannel(address: oldAddress);
+      } catch (_) {}
+      rethrow;
+    }
+
     final current = store.deviceById(nvr.id);
     if (current != null) {
       await store.saveDevice(current.copyWith(channelHosts: {...current.channelHosts, ch.channel: ip}));
@@ -824,7 +961,8 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
         cam == null
             ? 'Elige arriba cuál es'
             : '${cam.host}${camNet != null ? ' · ${camNet.dhcp ? 'IP automática (puede cambiar)' : 'IP fija'}' : ''}'
-                '${issue == NvrLinkIssue.ipChanged ? ' · ¡distinta a la del NVR!' : ''}',
+                '${issue == NvrLinkIssue.ipChanged ? ' · ¡distinta a la del NVR!' : ''}'
+                '${_nvrAddressFree == null ? '' : _nvrAddressFree! ? ' · ${ch.address} está libre' : ' · ${ch.address} la usa otro aparato'}',
       ),
       (
         connected == null ? _Lvl.info : (connected ? _Lvl.ok : _Lvl.bad),
@@ -966,6 +1104,38 @@ class _NvrRepairScreenState extends State<NvrRepairScreen> {
             const Text('Reparación', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
             for (final l in _log) _row(l.level, null, l.text),
+            if (_manual != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceHigh,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Hazlo en el NVR (2 minutos)', style: TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 6),
+                    if (_manualMoveIp != null) ...[
+                      Text(
+                        'Como el NVR no deja cambiarlo desde la app, se hace en dos partes:\n'
+                        '1) La app mueve la cámara a $_manualMoveIp (libre, nadie más la usa).\n'
+                        '2) Tú pones $_manualMoveIp en el NVR.',
+                        style: const TextStyle(height: 1.45),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: _repairing ? null : _moveForManual,
+                        icon: const Icon(Icons.swap_horiz),
+                        label: Text('1) Mover la cámara a $_manualMoveIp'),
+                      ),
+                    ] else
+                      Text(_manual!, style: const TextStyle(height: 1.45)),
+                  ],
+                ),
+              ),
+            ],
             if (_final != null) ...[
               const SizedBox(height: 10),
               Container(
